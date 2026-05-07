@@ -1,5 +1,5 @@
 {% set name = "janusx" %}
-{% set version = "1.0.22" %}
+{% set version = "1.0.23" %}
 
 package:
   name: {{ name }}
@@ -7,7 +7,7 @@ package:
 
 source:
   url: https://github.com/FJingxian/JanusX/archive/v{{ version }}.tar.gz
-  sha256: a2b85c4c0f5643d426c198410f1307957f099e43f6be2997ff48bb65bb03b966
+  sha256: cc38df0ae68702517c7390488647dc803d00b22e5b8cc5885dd1c2e96074e8b2
 
 build:
   number: 0
