@@ -1,4 +1,4 @@
-{% set version = "1.5.3" %}
+{% set version = "1.6" %}
 
 package:
   name: piranha-polio
@@ -6,7 +6,7 @@ package:
 
 source:
   url: https://github.com/polio-nanopore/piranha/archive/refs/tags/{{ version }}.tar.gz
-  sha256: ec89de5708e9e91c7e9d76b6b835feabe9e9d72d1b0f13f31598d25c1ec8db36
+  sha256: c4787a2312cb5640544a4090c8d913ca5091051d620e60ed9ed661d1d457c411
 
 build:
   number: 0
