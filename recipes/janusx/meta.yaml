@@ -7,7 +7,7 @@ package:
 
 source:
   url: https://github.com/FJingxian/JanusX/archive/v{{ version }}.tar.gz
-  sha256: af91a15e2daaed178841702d7909eef9acec8c0369f7ecbc90f16821804f6b94
+  sha256: 2f6fc0f5da0aec2c3006d797ae60e278ade2660ce3069c7e16a8fda148edd8a1
 
 build:
   number: 0
