@@ -1,5 +1,5 @@
 {% set name = "corgi" %}
-{% set version = "0.5.3" %}
+{% set version = "0.5.4" %}
 {% set pypiname = "bio-corgi" %}
 
 package:
@@ -8,7 +8,7 @@ package:
 
 source:
   url: https://pypi.io/packages/source/{{ pypiname[0] }}/{{ pypiname }}/bio_corgi-{{ version }}.tar.gz
-  sha256: b51d440b501589afc1b5f36dfd694852be47b5a0d8b05e1876918b87fb0d2237
+  sha256: 45eadaacba9dbdb81af688676af5bb61b5be3eca431964154e6abf87558dd069
 
 build:
   entry_points:
