@@ -11,11 +11,13 @@ source:
 
 build:
   number: 0
-  run_exports: []
+  run_exports:
+    - {{ pin_subpackage("density-fitness", max_pin="x") }}
 
 requirements:
   build:
     - {{ compiler("cxx") }}
+    - {{ stdlib("c") }}
     - cmake
     - ninja
   host:
