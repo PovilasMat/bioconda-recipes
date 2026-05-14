@@ -1,5 +1,5 @@
 {% set name = "cogent3" %}
-{% set version = "2026.4.20a0" %}
+{% set version = "2026.5.14a0" %}
 
 package:
   name: {{ name }}
@@ -7,7 +7,7 @@ package:
 
 source:
   url: https://pypi.org/packages/source/{{ name[0] }}/{{ name }}/{{ name }}-{{ version }}.tar.gz
-  sha256: 739b09bcb7deaf463803a8704e97f4dd4752fdeb2c186f97aeb820d718731df2
+  sha256: 9435cb2a75771326610c0077985406c62279adab9be493e6a8fca6b5a6fc08a7
 
 build:
   noarch: python
