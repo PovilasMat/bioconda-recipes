@@ -14,13 +14,14 @@ source:
     sha256: cac32ddcd2ecd6837e770d097892002af2564781c9b3843ca70d75dda862d15b  # [osx and arm64]
 
 build:
-  number: 0
+  number: 1
   skip: True  # [osx and x86_64]
   run_exports:
     - {{ pin_subpackage(name, max_pin="x") }}
 
 requirements:
-  run: []
+  host:
+    - zlib
 
 test:
   commands:
