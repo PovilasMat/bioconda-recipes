@@ -18,6 +18,8 @@ build:
   rpaths:
     - lib/R/lib/
     - lib/
+  run_exports:
+    - {{ pin_subpackages(name, max_pin="x") }}
 
 requirements:
   host:
@@ -73,7 +75,7 @@ test:
 
 about:
   home: https://github.com/omnideconv/immunedeconv
-  license: BSD_3_clause
+  license: BSD-3-Clause
   summary: "collection of methods for immune cell deconvolution of bulk RNA-seq samples."
   license_family: BSD
   license_file: LICENSE
