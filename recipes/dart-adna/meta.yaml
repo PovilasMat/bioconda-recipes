@@ -1,4 +1,4 @@
-{% set version = "1.0.4" %}
+{% set version = "1.1.0" %}
 
 package:
   name: dart-adna
@@ -6,10 +6,10 @@ package:
 
 source:
   url: https://github.com/genomewalker/dart/archive/refs/tags/v{{ version }}.tar.gz
-  sha256: 3c52786dab2793068dfac3b785cea555279abc2db3a59db68aaa0ab4825dd67e
+  sha256: 16cd240366e92c938e37d7f2359dfa66e2cf9ee8ea1d58e8cde34a05011fcf1a
 
 build:
-  number: 1
+  number: 0
   run_exports:
     - {{ pin_subpackage('dart-adna', max_pin='x') }}
 
