@@ -1,5 +1,5 @@
 {% set name = "fwdpy11" %}
-{% set version = "0.24.6" %}
+{% set version = "0.24.7" %}
 
 package:
   name: {{ name|lower }}
@@ -7,7 +7,7 @@ package:
 
 source:
   url: https://pypi.io/packages/source/{{ name[0] }}/{{ name }}/fwdpy11-{{ version }}.tar.gz
-  sha256: 80ad4c93692d5eb06acb1754d56aca741b7ad8c70db882c81e5c25cb981458fe
+  sha256: 586c1856839bd67df53a5d5cb124b1a3f9a15c2cb6831925497531447ed94522
 
 build:
   number: 0
