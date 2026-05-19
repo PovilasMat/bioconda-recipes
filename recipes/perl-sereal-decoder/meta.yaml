@@ -1,5 +1,5 @@
 {% set name = "perl-sereal-decoder" %}
-{% set version = "5.004" %}
+{% set version = "5.005" %}
 
 package:
   name: {{ name }}
@@ -7,7 +7,7 @@ package:
 
 source:
   url: https://cpan.metacpan.org/authors/id/Y/YV/YVES/Sereal-Decoder-{{ version }}.tar.gz
-  sha256: 68ef0314d87d1a6e60bb0f66fcf43eb2cacdeb1754432f5e25e784e39d3e6784
+  sha256: c5a6e58ab9819b562064ca51dd61e30c0cb7bff593fc44ae1410f27336b304c6
 
 build:
   number: 0
