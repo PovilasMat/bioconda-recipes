@@ -1,5 +1,5 @@
 {% set name = "vcfx" %}
-{% set version = "1.1.4" %}
+{% set version = "1.1.5" %}
 
 
 package:
@@ -8,7 +8,7 @@ package:
 
 source:
   url: https://github.com/ieeta-pt/VCFX/archive/v{{ version }}.tar.gz
-  sha256: 340ce4c3fda0b199eec0dd4018eac6e76a5920c2520308e9c49c86c290bd7ff8
+  sha256: 3c3a572cec2d99d71d63bed08ce8462fc64970932a11324a00005f952513b29e
 
 
 build:
