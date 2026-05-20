@@ -28,6 +28,8 @@ requirements:
     - zstd
     - sqlite
     - aws-sdk-cpp
+  run:
+    - boost-cpp
 
 test:
   commands:
