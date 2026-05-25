@@ -1,5 +1,5 @@
 {% set name = "seismic-rna" %}
-{% set version = "0.24.4" %}
+{% set version = "0.25.0" %}
 
 package:
   name: {{ name }}
@@ -7,10 +7,10 @@ package:
 
 source:
   url: https://github.com/rouskinlab/{{ name }}/archive/refs/tags/v{{ version }}.tar.gz
-  sha256: eab7ed508a4e45d2b007367a1e3471fa0ede481263beb64dfa9dc43c073264a3
+  sha256: 6338127d97e6498f0b73ca16e2d936d7dff3994b6c4d5d63c5d2cc3f51a05db3
 
 build:
-  number: 1
+  number: 0
   skip: True  # [py < 311]
   script: |
     export LDFLAGS=$(echo "${LDFLAGS}" | sed 's/-Wl,--version//g')
