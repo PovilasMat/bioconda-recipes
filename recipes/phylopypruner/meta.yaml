@@ -1,5 +1,5 @@
 {% set name = "phylopypruner" %}
-{% set version = "1.2.6" %}
+{% set version = "1.3.0" %}
 
 package:
   name: {{ name|lower }}
@@ -7,7 +7,7 @@ package:
 
 source:
   url: https://pypi.org/packages/source/{{ name[0] }}/{{ name }}/phylopypruner-{{ version }}.tar.gz
-  sha256: bb83a981ce2bf4ab8e4f179dbd11fa96c62efc7f17a7ffe213ff7e531a35e60a
+  sha256: 83ba34859bd647cbea337a11cf68cf7c906f7350fa8a7f7564efdf6bfdb79e2e
 
 build:
   number: 0
