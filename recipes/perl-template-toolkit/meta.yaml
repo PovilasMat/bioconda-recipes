@@ -1,5 +1,5 @@
 {% set name = "perl-template-toolkit" %}
-{% set version = "3.105" %}
+{% set version = "3.106" %}
 
 package:
   name: {{ name }}
@@ -7,7 +7,7 @@ package:
 
 source:
   url: https://cpan.metacpan.org/authors/id/T/TO/TODDR/Template-Toolkit-{{ version }}.tar.gz
-  sha256: bfcd46d71d4b1f33a0aa5af91270bad7aa215391a19b80e90e74e491fc464e98
+  sha256: c7474050be80201f1fb55f0a569b9c0ab6c1c3f0cebbd7e601bda9b4046eec85
 
 build:
   number: 0
