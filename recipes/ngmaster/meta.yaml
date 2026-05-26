@@ -1,5 +1,5 @@
 {% set name = "ngmaster" %}
-{% set version = "2.0.0" %}
+{% set version = "2.0.5" %}
 
 package:
   name: "{{ name|lower }}"
@@ -7,7 +7,7 @@ package:
 
 source:
   url: "https://github.com/MDU-PHL/ngmaster/archive/refs/tags/v{{ version }}.tar.gz"
-  sha256: 1215140b5ea060b6274d40b87ae3e38cbf608174067c762a3bfba383f1687487
+  sha256: 946534760174f556ddbf1495d8217e464d858aadbdd50b706ad720175a194eb0
 
 build:
   number: 0
