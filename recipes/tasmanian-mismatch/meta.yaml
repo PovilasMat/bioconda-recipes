@@ -11,7 +11,6 @@ source:
 
 build:
   number: 0
-  noarch: generic
   run_exports:
     - {{ pin_subpackage('tasmanian-mismatch', max_pin='x') }}
   script: |
@@ -28,15 +27,16 @@ build:
     export CXXFLAGS="${CXXFLAGS}"
     export LDFLAGS="${LDFLAGS}"
 
-    # Also provide target-qualified vars (these are what the log shows Cargo probing)
-    export TARGET="${TARGET:-x86_64-unknown-linux-gnu}"
-    export CC_x86_64_unknown_linux_gnu="${CC}"
-    export CXX_x86_64_unknown_linux_gnu="${CXX}"
-    export AR_x86_64_unknown_linux_gnu="${AR}"
-    export RANLIB_x86_64_unknown_linux_gnu="${RANLIB}"
-    export CFLAGS_x86_64_unknown_linux_gnu="${CFLAGS}"
-    export CXXFLAGS_x86_64_unknown_linux_gnu="${CXXFLAGS}"
-    export LDFLAGS_x86_64_unknown_linux_gnu="${LDFLAGS}"
+    # Also provide target-qualified vars for Cargo
+    export TARGET="${TARGET:-$(rustc -vV | sed -n 's/^host: //p')}"
+    target_env="${TARGET//-/_}"
+    export "CC_${target_env}=${CC}"
+    export "CXX_${target_env}=${CXX}"
+    export "AR_${target_env}=${AR}"
+    export "RANLIB_${target_env}=${RANLIB}"
+    export "CFLAGS_${target_env}=${CFLAGS}"
+    export "CXXFLAGS_${target_env}=${CXXFLAGS}"
+    export "LDFLAGS_${target_env}=${LDFLAGS}"
 
     cargo build --release --locked
 
