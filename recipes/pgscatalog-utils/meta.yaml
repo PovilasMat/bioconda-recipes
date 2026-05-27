@@ -1,5 +1,5 @@
 {% set name = "pgscatalog-utils" %}
-{% set version = "2.0.3" %}
+{% set version = "2.0.4" %}
 
 package:
   name: {{ name|lower }}
@@ -7,7 +7,7 @@ package:
 
 source:
   url: https://pypi.org/packages/source/{{ name[0] }}/{{ name }}/pgscatalog_utils-{{ version }}.tar.gz
-  sha256: 24d122ea44aeb15d22d00a0234845079559c7ff95674ebb1860fe3fb17533acd
+  sha256: 3e7a9913091f8a12abf7bc1980f8c5c773cc51a9efbccffedef03dc079881c81
 
 build:
   number: 0
