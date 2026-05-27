@@ -1,5 +1,5 @@
 {% set name = "seismic-rna" %}
-{% set version = "0.25.0" %}
+{% set version = "0.25.1" %}
 
 package:
   name: {{ name }}
@@ -7,7 +7,7 @@ package:
 
 source:
   url: https://github.com/rouskinlab/{{ name }}/archive/refs/tags/v{{ version }}.tar.gz
-  sha256: 6338127d97e6498f0b73ca16e2d936d7dff3994b6c4d5d63c5d2cc3f51a05db3
+  sha256: b3ece14c275d1a0e41ba897cc0e843653438203e3363681323743fc1d500a4e7
 
 build:
   number: 0
