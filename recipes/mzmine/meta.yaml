@@ -1,5 +1,5 @@
 {% set name = "mzmine" %}
-{% set version = "4.10.0" %}
+{% set version = "4.10.1" %}
 
 package:
   name: {{ name }}
@@ -7,7 +7,7 @@ package:
 
 source:
   url: https://github.com/mzmine/mzmine/archive/refs/tags/v{{ version }}.tar.gz
-  sha256: e3df34b72bf3b97b5bb8673a739ab6b0cddf33e40d1c4d7154eb969f8231d651
+  sha256: 9afb0fdffae2fcb331c507d0709b42aea27891a390dcf0d53f8bc2afd044ff6b
   patches:
     - build.patch
 
