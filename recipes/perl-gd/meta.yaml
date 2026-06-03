@@ -21,6 +21,7 @@ requirements:
     - {{ compiler('c') }}
     - {{ compiler('cxx') }}
     - pkg-config
+    - {{ stdlib('c') }}
   host:
     - perl
     - perl-extutils-makemaker
@@ -32,7 +33,6 @@ requirements:
     - libgd
     - zlib
     - expat
-
   run:
     - libgd
     - perl
@@ -42,7 +42,6 @@ test:
   imports:
     - GD
     - GD::Simple
-
 
 about:
   home: http://metacpan.org/pod/GD
