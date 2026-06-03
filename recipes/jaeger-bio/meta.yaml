@@ -1,5 +1,5 @@
 {% set name = "jaeger-bio" %}
-{% set version = "1.1.30" %}
+{% set version = "1.26.2" %}
 
 package:
   name: "{{ name|lower }}"
@@ -7,7 +7,7 @@ package:
 
 source:
   url: "https://pypi.io/packages/source/{{ name[0] }}/{{ name }}/jaeger_bio-{{ version }}.tar.gz"
-  sha256: ffc54d7257201310ff137dd61dcb1d8afe6c7f95bf2fdf578fec79a16145aeae
+  sha256: b890227e03f123d5bc3d8f29269f5256079fe4dfd87ec22d85da9206e18e46eb
 
 build:
   number: 0
