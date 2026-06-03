@@ -1,5 +1,5 @@
 {% set name = "alphatims" %}
-{% set version = "1.1.0" %}
+{% set version = "1.1.1" %}
 
 package:
   name: {{ name|lower }}
@@ -7,7 +7,7 @@ package:
 
 source:
   url: https://github.com/MannLabs/{{ name }}/archive/refs/tags/v{{ version }}.tar.gz
-  sha256: 954715a5a3bbbac07fb0abf9554dd6f62aa9c9abcff246dbb69574614b6402ed
+  sha256: 6acd6f6057491994797c8cd03fb77dbe6e3c94f5ac7e5fa6bcf07fc1b6f0205a
 
 build:
   noarch: python
