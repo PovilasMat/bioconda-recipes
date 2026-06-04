@@ -40,6 +40,10 @@ requirements:
     - pydustmasker >=1.0.3,<2
 
 test:
+  imports:
+    - jaeger
+    - jaeger.data
+    - jaeger.nnlib
   commands:
     - jaeger --help
     - jaeger run --help
