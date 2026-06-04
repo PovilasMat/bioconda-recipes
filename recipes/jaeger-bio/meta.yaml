@@ -20,7 +20,7 @@ requirements:
   host:
     - python >=3.9,<3.12
     - pip
-    - pdm
+    - pdm-backend
   run:
     - h5py >=3.8
     - kneed >=0.8.5
