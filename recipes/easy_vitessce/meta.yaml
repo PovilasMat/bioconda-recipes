@@ -1,5 +1,5 @@
 {% set name = "easy_vitessce" %}
-{% set version = "0.0.11" %}
+{% set version = "0.0.12" %}
 {% set python_min = ">=3.9" %}
 
 package:
@@ -8,7 +8,7 @@ package:
 
 source:
   url: https://pypi.org/packages/source/{{ name[0] }}/{{ name }}/easy_vitessce-{{ version }}.tar.gz
-  sha256: e3982df2250d0800a7f0ed6d34a4135d937f122224b2b0c0109ee51edfc0ae70
+  sha256: e58dddce848f209bb392415610b90793dc9ea9c4ac45139229a4b4049c5316fc
 
 build:
   noarch: python
