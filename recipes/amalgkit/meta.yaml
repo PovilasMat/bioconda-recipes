@@ -1,5 +1,5 @@
 {% set name = "amalgkit" %}
-{% set version = "0.14.0" %}
+{% set version = "0.16.25" %}
 
 package:
   name: "{{ name|lower }}"
@@ -7,7 +7,7 @@ package:
 
 source:
   url: https://github.com/kfuku52/{{ name }}/archive/refs/tags/v{{ version }}.tar.gz
-  sha256: dc180688258c6112dfca02cfca2cf66b11fc8db74f2ef112990a18a3357ac503
+  sha256: 3d6de6110673ce9dfe821ee42c530a38f02d4fa8b12ee360f9d98d02b8666a44
 
 build:
   number: 0
