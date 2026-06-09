@@ -7,7 +7,7 @@ package:
 
 source:
   url: https://github.com/Yasas1994/PHANOTATE-rs/archive/refs/tags/v{{ version }}.tar.gz
-  sha256: e67e95c7b139fa0f96e1ae130f8075a51f55dd21eb9314ab39ab83e6ee50e319
+  sha256: 060333f6fffb63257b0176263ebd6bc6962b7acf75c830b0535035f8736bdd6f
 
 build:
   number: 0
