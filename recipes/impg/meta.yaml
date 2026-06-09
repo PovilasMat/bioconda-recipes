@@ -1,5 +1,5 @@
 {% set name = "impg" %}
-{% set version = "0.4.0" %}
+{% set version = "0.4.1" %}
 
 package:
   name: {{ name|lower }}
@@ -7,7 +7,7 @@ package:
 
 source:
   url: https://github.com/pangenome/{{ name }}/archive/refs/tags/v{{ version }}.tar.gz
-  sha256: 64fcb1ad950dfd30a2b9d36dc1e412d791fb3c3ce5fefa200577c3e7ddbc9734 
+  sha256: 6c8c0333419cd3129e69a72450894164eaf907187cd627f3d20eb57eb2bded6d 
 
 build:
   number: 0
