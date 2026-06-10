@@ -1,5 +1,5 @@
 {% set name = "demultiplex" %}
-{% set version = "1.2.2" %}
+{% set version = "1.2.3" %}
 
 package:
   name: {{ name|lower }}
@@ -7,14 +7,14 @@ package:
 
 source:
   url: https://pypi.io/packages/source/{{ name[0] }}/{{ name }}/demultiplex-{{ version }}.tar.gz
-  sha256: 27ebc30e52e36048486286348b44806deabb24197e05eb88bbed413676e99181
+  sha256: 905e70a3674aab01c63f6e130ce8b4c9dca54cc0868b932587d4a1045d945990
 
 build:
   entry_points:
     - demultiplex = demultiplex.cli:main
   noarch: python
   script: {{ PYTHON }} -m pip install . -vv
-  number: 1
+  number: 0
   run_exports:
     - {{ pin_subpackage(name|lower) }}
 
