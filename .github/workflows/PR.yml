@@ -155,7 +155,7 @@ jobs:
           attempt=1
           max_attempts=2
           retry_delay=15
-          log_file=$(mktemp /tmp/bioconda-build.XXXXXX)
+          log_file=$(mktemp "${RUNNER_TEMP:-/tmp}/bioconda-build.XXXXXX")
           trap 'rm -f "$log_file"' EXIT
           # Retry only known transient network fetch failures from conda/docker downloads.
           transient_pattern='IncompleteRead|Connection broken|ReadTimeout|timed out|Temporary failure|Connection reset by peer'
@@ -168,7 +168,7 @@ jobs:
             fi
             cat "$log_file"
             if [ "$attempt" -ge "$max_attempts" ]; then
-              echo "bioconda-utils build failed after ${attempt} attempts."
+              echo "bioconda-utils build failed after ${max_attempts} attempts."
               exit 1
             fi
             if ! grep -Eqi "$transient_pattern" "$log_file"; then
