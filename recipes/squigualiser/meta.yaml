@@ -1,5 +1,5 @@
 {% set name = "squigualiser" %}
-{% set version = "0.6.4" %}
+{% set version = "0.6.5" %}
 
 package:
   name: {{ name|lower }}
@@ -7,7 +7,7 @@ package:
 
 source:
   url: https://pypi.io/packages/source/{{ name[0] }}/{{ name }}/squigualiser-{{ version }}.tar.gz
-  sha256: 4e3855d435fc44a5e35e5c6928486701c721e4c77a247282aceef0f4c491efb5
+  sha256: be5d4e6e493acf700d264a697bf4ddb7114d2c7047564c6e8f76e187219d655f
 
 build:
   entry_points:
