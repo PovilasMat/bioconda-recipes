@@ -1,5 +1,5 @@
 {% set name = "chaintools" %}
-{% set version = "0.0.5" %}
+{% set version = "0.0.6" %}
 
 package:
  name: {{ name }}
@@ -7,7 +7,7 @@ package:
 
 source:
  url: https://github.com/alejandrogzi/{{ name }}/archive/refs/tags/v{{ version }}.tar.gz
- sha256: 87598fa59609040de336643f3e66bfb238a4d2f6d758da75f343f60540fa941c
+ sha256: d0bcbe7600d0cf8afc5630e635d4d54b7ed367e99f6097ff7e4018f54e3bf7e9
 
 build:
  number: 0
