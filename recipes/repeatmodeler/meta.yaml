@@ -1,6 +1,6 @@
 {% set name = "RepeatModeler" %}
-{% set version = "2.0.8" %}
-{% set sha256 = "4a0caa83e989dc132fcae4a8ab7a5a0f592224a1cdbc93d78eed56a52dc7a767" %}
+{% set version = "2.0.9" %}
+{% set sha256 = "da7d16c97458059fd12e4d7054ee7695ea3855b8660c450452875685086c5e2f" %}
 
 package:
   name: {{ name|lower }}
@@ -13,7 +13,7 @@ source:
     - patch
 
 build:
-  number: 1
+  number: 0
   noarch: generic
   run_exports:
     - {{ pin_subpackage('repeatmodeler', max_pin="x") }}
