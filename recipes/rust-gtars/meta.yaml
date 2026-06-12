@@ -7,7 +7,7 @@ package:
 
 source:
   url: https://github.com/databio/gtars/archive/v{{ version }}.tar.gz
-  sha256: cf1ec0751ca7d16c05916ebf15b36981f8ec0dbb8d84a5611d9a046ba5a59296
+  sha256: 27a0ff87ff014c63cd2ea34e5b7f24805a8adbacd93afb65ce4a5f902478e32c
 
 build:
   number: 0
