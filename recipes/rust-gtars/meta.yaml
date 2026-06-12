@@ -1,4 +1,4 @@
-{% set version = "0.8.0" %}
+{% set version = "0.9.0" %}
 {% set name = "rust-gtars" %}
 
 package:
@@ -7,7 +7,7 @@ package:
 
 source:
   url: https://github.com/databio/gtars/archive/v{{ version }}.tar.gz
-  sha256: fcfbe962210f8bfa5110e673bc5eae2a3ae5f64491740cde018f475a0b0d29a3
+  sha256: cf1ec0751ca7d16c05916ebf15b36981f8ec0dbb8d84a5611d9a046ba5a59296
 
 build:
   number: 0
