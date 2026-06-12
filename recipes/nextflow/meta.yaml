@@ -1,5 +1,5 @@
-{% set version = "25.04.1" %}
-{% set sha256 = "241473b2af320b308f80fda441fb7218fa2d9cac2d900af108310ac4e46862c0" %}
+{% set version = "26.04.3" %}
+{% set sha256 = "a56de126fa06686c157aca63b4679cf425f6ca71675325e0ec7171609e3c51e0" %}
 
 package:
   name: nextflow
@@ -18,11 +18,13 @@ source:
 requirements:
   host:
     - openjdk >=17,<=24
-    - coreutils
+    - coreutils          # [not win]
+    - uutils-coreutils   # [win]
     - curl
   run:
     - openjdk >=17,<=24
-    - coreutils
+    - coreutils          # [not win]
+    - uutils-coreutils   # [win]
     - curl
 
 test:
