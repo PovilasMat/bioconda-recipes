@@ -1,6 +1,6 @@
 # recipe/meta.yaml
 {% set name = "pyonsite" %}
-{% set version = "0.0.2" %}
+{% set version = "0.0.3" %}
 
 package:
   name: {{ name|lower }}
@@ -8,7 +8,7 @@ package:
 
 source:
   url: https://pypi.io/packages/source/{{ name[0] }}/{{ name }}/pyonsite-{{ version }}.tar.gz
-  sha256: a144835af357d3dd36ff80a27e6a477f325222be15f924a8bccbbf4d2f2fbb38
+  sha256: 3c2da7d33e018386fef62597a30f9612d545df2a649bda25eca1136db4156d76
 
 build:
   entry_points:
