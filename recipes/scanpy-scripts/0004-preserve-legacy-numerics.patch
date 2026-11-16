@@ -1,19 +1,11 @@
-Keep small UMAP ordering and t-SNE API adapters around their wrappers.
-
-Use installed SciPy for PCA/SVD; no numerical algorithm is copied or replaced.
-Restore temporary bindings after UMAP/t-SNE returns or raises, including nested
-calls. Other commands retain standard dependency behavior. This limits output
-drift but does not promise identical PCA values or embedding layouts.
+Preserve UMAP edge order and adapt Scanpy's t-SNE call to newer sklearn.
 
 --- a/scanpy_scripts/_legacy_numerics.py
 +++ b/scanpy_scripts/_legacy_numerics.py
-@@ -0,0 +1,36 @@
-+"""Small compatibility adapters for UMAP and t-SNE wrappers.
+@@ -0,0 +1,33 @@
++"""Temporary dependency overrides, restored on return or exception.
 +
-+Preserve historical UMAP edge order and omit Scanpy's obsolete sklearn keyword.
-+PCA/SVD always use installed SciPy. Imports do not replace any bindings; the
-+wrappers restore them on return or exception. The temporary replacements affect
-+this process, so avoid concurrent unrelated analysis during these operations.
++These are process-wide; avoid unrelated concurrent analysis.
 +"""
 +from contextlib import ExitStack, contextmanager
 +from unittest.mock import patch
