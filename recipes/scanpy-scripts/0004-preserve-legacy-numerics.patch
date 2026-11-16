@@ -1,42 +1,10 @@
-Preserve numerical behavior of the original scanpy-scripts environment.
+Preserve legacy CLI numerics with small, command-scoped function overrides.
 
-Vendor the validated SciPy 1.8.1 svds reconstruction and scoped Scanpy/sklearn
-adapters. Retain column-major UMAP edge visitation without changing installed
-SciPy classes, and omit the obsolete sklearn TSNE square_distances argument.
-Upstream source versions and licenses are recorded in the added modules.
+Use the installed Scanpy, sklearn and Scrublet routines. Retain only the old
+ARPACK reconstruction, column-major COO traversal and obsolete TSNE argument
+handling. Restore dependency bindings after each CLI command, even on errors.
+Non-ARPACK solvers use installed SciPy. Keep the SciPy copyright/license notice.
 
---- a/LICENSE.scanpy
-+++ b/LICENSE.scanpy
-@@ -0,0 +1,29 @@
-+BSD 3-Clause License
-+
-+Copyright (c) 2017 F. Alexander Wolf, P. Angerer, Theis Lab
-+All rights reserved.
-+
-+Redistribution and use in source and binary forms, with or without
-+modification, are permitted provided that the following conditions are met:
-+
-+* Redistributions of source code must retain the above copyright notice, this
-+  list of conditions and the following disclaimer.
-+
-+* Redistributions in binary form must reproduce the above copyright notice,
-+  this list of conditions and the following disclaimer in the documentation
-+  and/or other materials provided with the distribution.
-+
-+* Neither the name of the copyright holder nor the names of its
-+  contributors may be used to endorse or promote products derived from
-+  this software without specific prior written permission.
-+
-+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
-+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 --- a/LICENSE.scipy
 +++ b/LICENSE.scipy
 @@ -0,0 +1,30 @@
@@ -70,877 +38,87 @@ Upstream source versions and licenses are recorded in the added modules.
 +THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 +(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 +OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
---- a/LICENSE.scrublet
-+++ b/LICENSE.scrublet
-@@ -0,0 +1,8 @@
-+The MIT License (MIT)
-+Copyright (c) 2018 Samuel Wolock
+--- a/scanpy_scripts/_legacy_numerics.py
++++ b/scanpy_scripts/_legacy_numerics.py
+@@ -0,0 +1,50 @@
++"""Legacy numerical behavior during scanpy-scripts CLI commands only.
 +
-+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-+
-+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-+
-+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
---- a/scanpy_scripts/lib/_legacy/__init__.py
-+++ b/scanpy_scripts/lib/_legacy/__init__.py
-@@ -0,0 +1,19 @@
-+"""Numerical compatibility for the original scanpy-scripts 1.9.301 recipe.
-+
-+The recipe pins OpenBLAS 0.3.25 and Numba 0.60.0. These local adapters retain
-+SciPy 1.8.1 ARPACK reconstruction and pre-1.11 column-major UMAP edge order,
-+while using Python 3.11/3.12 compatible SciPy and scikit-learn extensions.
-+No installed dependency modules or global function bindings are modified.
-+
-+Scanpy 1.9.3 routines are copied here only where they import those algorithms
-+inside functions. Their numerical operations and metadata handling are retained;
-+long upstream API docstrings are omitted. The two scikit-learn 1.3.2 methods
-+only replace their svds binding. Scrublet 0.2.3 pipelines use those estimators.
-+The t-SNE adapter drops square_distances for scikit-learn, where it has been
-+ignored since 1.1 and removed in 1.3. The MulticoreTSNE path is retained.
-+
-+Sources: scipy/sparse/linalg/_eigen/_svds.py (Conda SciPy 1.8.1),
-+scanpy/{preprocessing/_pca.py,tools/{_utils,_umap,_tsne}.py,
-+external/pp/_scrublet.py} (1.9.3), sklearn/decomposition/{_pca,
-+_truncated_svd}.py (1.3.2), scrublet/helper_functions.py (0.2.3).
++Bindings are restored on return or exception. Importing the library does not
++activate these hooks. They temporarily affect dependency modules in this
++process, so CLI callbacks should not run concurrently with unrelated analysis.
++SciPy and sklearn versions are constrained by the Conda recipe.
 +"""
---- a/scanpy_scripts/lib/_legacy/_decomposition.py
-+++ b/scanpy_scripts/lib/_legacy/_decomposition.py
-@@ -0,0 +1,141 @@
-+# Derived from scikit-learn 1.3.2 (BSD-3-Clause); local svds import.
-+# See LICENSE.scanpy, LICENSE.sklearn, LICENSE.scipy and LICENSE.scrublet.
++from contextlib import ExitStack, contextmanager
++from importlib import import_module
++from unittest.mock import patch
++
++
++@contextmanager
++def legacy_numerics():
++    import numpy as np
++    from scipy.sparse import coo_matrix
++    import scipy.sparse.linalg as sla
++    import sklearn.manifold as manifold
++    from ._legacy_svds import svds
++
++    scanpy_pca = import_module('scanpy.preprocessing._pca')
++    sklearn_pca = import_module('sklearn.decomposition._pca')
++    sklearn_svd = import_module('sklearn.decomposition._truncated_svd')
++    original_sum = coo_matrix.sum_duplicates
++    original_tsne = manifold.TSNE
++
++    def column_ordered_sum(self):
++        original_sum(self)
++        order = np.lexsort((self.row, self.col))
++        self.row, self.col = self.row[order], self.col[order]
++        self.data = self.data[order]
++        self.has_canonical_format = True  # SciPy <=1.10 convention
++
++    def compatible_tsne(*args, **kwargs):
++        # Ignored since sklearn 1.1; removed from its constructor in 1.3.
++        kwargs.pop('square_distances', None)
++        return original_tsne(*args, **kwargs)
++
++    replacements = (
++        (sla, 'svds', svds),
++        (scanpy_pca, 'svds', svds),
++        (sklearn_pca, 'svds', svds),
++        (sklearn_svd, 'svds', svds),
++        (coo_matrix, 'sum_duplicates', column_ordered_sum),
++        (manifold, 'TSNE', compatible_tsne),
++    )
++    with ExitStack() as stack:
++        for obj, name, replacement in replacements:
++            stack.enter_context(patch.object(obj, name, replacement))
++        yield
+--- a/scanpy_scripts/_legacy_svds.py
++++ b/scanpy_scripts/_legacy_svds.py
+@@ -0,0 +1,111 @@
++"""SciPy 1.8.1 ARPACK reconstruction using the installed eigensolver.
++
++Derived from SciPy 1.8.1, Copyright (c) 2001-2002 Enthought, Inc.,
++2003-2019 SciPy Developers. BSD-3-Clause; see LICENSE.scipy.
++The recipe bounds SciPy's private input validator to >=1.9.3,<1.14.
++Non-ARPACK solvers delegate to the installed SciPy implementation.
++"""
 +import numpy as np
-+from scipy import sparse as sp
-+from sklearn.base import _fit_context
-+from sklearn.decomposition import PCA as ModernPCA, TruncatedSVD as ModernTruncatedSVD
-+from sklearn.utils import check_random_state
-+from sklearn.utils._arpack import _init_arpack_v0
-+from sklearn.utils.extmath import randomized_svd, safe_sparse_dot, svd_flip
-+from sklearn.utils.sparsefuncs import mean_variance_axis
-+from ._svds import svds
-+
-+
-+class PCA(ModernPCA):
-+    def _fit_truncated(self, X, n_components, svd_solver):
-+        n_samples, n_features = X.shape
-+
-+        if isinstance(n_components, str):
-+            raise ValueError(
-+                "n_components=%r cannot be a string with svd_solver='%s'"
-+                % (n_components, svd_solver)
-+            )
-+        elif not 1 <= n_components <= min(n_samples, n_features):
-+            raise ValueError(
-+                "n_components=%r must be between 1 and "
-+                "min(n_samples, n_features)=%r with "
-+                "svd_solver='%s'"
-+                % (n_components, min(n_samples, n_features), svd_solver)
-+            )
-+        elif svd_solver == "arpack" and n_components == min(n_samples, n_features):
-+            raise ValueError(
-+                "n_components=%r must be strictly less than "
-+                "min(n_samples, n_features)=%r with "
-+                "svd_solver='%s'"
-+                % (n_components, min(n_samples, n_features), svd_solver)
-+            )
-+
-+        random_state = check_random_state(self.random_state)
-+
-+        # Center data
-+        self.mean_ = np.mean(X, axis=0)
-+        X -= self.mean_
-+
-+        if svd_solver == "arpack":
-+            v0 = _init_arpack_v0(min(X.shape), random_state)
-+            U, S, Vt = svds(X, k=n_components, tol=self.tol, v0=v0)
-+            # svds doesn't abide by scipy.linalg.svd/randomized_svd
-+            # conventions, so reverse its outputs.
-+            S = S[::-1]
-+            # flip eigenvectors' sign to enforce deterministic output
-+            U, Vt = svd_flip(U[:, ::-1], Vt[::-1])
-+
-+        elif svd_solver == "randomized":
-+            # sign flipping is done inside
-+            U, S, Vt = randomized_svd(
-+                X,
-+                n_components=n_components,
-+                n_oversamples=self.n_oversamples,
-+                n_iter=self.iterated_power,
-+                power_iteration_normalizer=self.power_iteration_normalizer,
-+                flip_sign=True,
-+                random_state=random_state,
-+            )
-+
-+        self.n_samples_ = n_samples
-+        self.components_ = Vt
-+        self.n_components_ = n_components
-+
-+        # Get variance explained by singular values
-+        self.explained_variance_ = (S**2) / (n_samples - 1)
-+
-+        # Workaround in-place variance calculation since at the time numpy
-+        # did not have a way to calculate variance in-place.
-+        N = X.shape[0] - 1
-+        np.square(X, out=X)
-+        np.sum(X, axis=0, out=X[0])
-+        total_var = (X[0] / N).sum()
-+
-+        self.explained_variance_ratio_ = self.explained_variance_ / total_var
-+        self.singular_values_ = S.copy()  # Store the singular values.
-+
-+        if self.n_components_ < min(n_features, n_samples):
-+            self.noise_variance_ = total_var - self.explained_variance_.sum()
-+            self.noise_variance_ /= min(n_features, n_samples) - n_components
-+        else:
-+            self.noise_variance_ = 0.0
-+
-+        return U, S, Vt
-+
-+
-+class TruncatedSVD(ModernTruncatedSVD):
-+    @_fit_context(prefer_skip_nested_validation=True)
-+    def fit_transform(self, X, y=None):
-+        X = self._validate_data(X, accept_sparse=["csr", "csc"], ensure_min_features=2)
-+        random_state = check_random_state(self.random_state)
-+
-+        if self.algorithm == "arpack":
-+            v0 = _init_arpack_v0(min(X.shape), random_state)
-+            U, Sigma, VT = svds(X, k=self.n_components, tol=self.tol, v0=v0)
-+            # svds doesn't abide by scipy.linalg.svd/randomized_svd
-+            # conventions, so reverse its outputs.
-+            Sigma = Sigma[::-1]
-+            U, VT = svd_flip(U[:, ::-1], VT[::-1])
-+
-+        elif self.algorithm == "randomized":
-+            if self.n_components > X.shape[1]:
-+                raise ValueError(
-+                    f"n_components({self.n_components}) must be <="
-+                    f" n_features({X.shape[1]})."
-+                )
-+            U, Sigma, VT = randomized_svd(
-+                X,
-+                self.n_components,
-+                n_iter=self.n_iter,
-+                n_oversamples=self.n_oversamples,
-+                power_iteration_normalizer=self.power_iteration_normalizer,
-+                random_state=random_state,
-+            )
-+
-+        self.components_ = VT
-+
-+        # As a result of the SVD approximation error on X ~ U @ Sigma @ V.T,
-+        # X @ V is not the same as U @ Sigma
-+        if self.algorithm == "randomized" or (
-+            self.algorithm == "arpack" and self.tol > 0
-+        ):
-+            X_transformed = safe_sparse_dot(X, self.components_.T)
-+        else:
-+            X_transformed = U * Sigma
-+
-+        # Calculate explained variance & explained variance ratio
-+        self.explained_variance_ = exp_var = np.var(X_transformed, axis=0)
-+        if sp.issparse(X):
-+            _, full_var = mean_variance_axis(X, axis=0)
-+            full_var = full_var.sum()
-+        else:
-+            full_var = np.var(X, axis=0).sum()
-+        self.explained_variance_ratio_ = exp_var / full_var
-+        self.singular_values_ = Sigma  # Store the singular values.
-+
-+        return X_transformed
---- a/scanpy_scripts/lib/_legacy/_pca.py
-+++ b/scanpy_scripts/lib/_legacy/_pca.py
-@@ -0,0 +1,237 @@
-+# Derived from Scanpy 1.9.3 (BSD-3-Clause); local svds and estimators.
-+# See LICENSE.scanpy, LICENSE.sklearn, LICENSE.scipy and LICENSE.scrublet.
-+from typing import Optional, Union
-+
-+import numpy as np
-+from scipy.sparse import issparse, spmatrix
-+from scipy.sparse.linalg import LinearOperator
-+from ._svds import svds
-+from sklearn.utils import check_array, check_random_state
-+from sklearn.utils.extmath import svd_flip
-+
-+from anndata import AnnData
-+
-+from scanpy import logging as logg
-+from scanpy.preprocessing._utils import _get_mean_var
-+from scanpy._utils import AnyRandom
-+from scanpy import settings
-+
-+
-+def pca(
-+    data: Union[AnnData, np.ndarray, spmatrix],
-+    n_comps: Optional[int] = None,
-+    zero_center: Optional[bool] = True,
-+    svd_solver: str = 'arpack',
-+    random_state: AnyRandom = 0,
-+    return_info: bool = False,
-+    use_highly_variable: Optional[bool] = None,
-+    dtype: str = 'float32',
-+    copy: bool = False,
-+    chunked: bool = False,
-+    chunk_size: Optional[int] = None,
-+) -> Union[AnnData, np.ndarray, spmatrix]:
-+    logg_start = logg.info('computing PCA')
-+
-+    # chunked calculation is not randomized, anyways
-+    if svd_solver in {'auto', 'randomized'} and not chunked:
-+        logg.info(
-+            'Note that scikit-learn\'s randomized PCA might not be exactly '
-+            'reproducible across different computational platforms. For exact '
-+            'reproducibility, choose `svd_solver=\'arpack\'.`'
-+        )
-+    data_is_AnnData = isinstance(data, AnnData)
-+    if data_is_AnnData:
-+        adata = data.copy() if copy else data
-+    else:
-+        adata = AnnData(data, dtype=data.dtype)
-+
-+    if use_highly_variable is True and 'highly_variable' not in adata.var.keys():
-+        raise ValueError(
-+            'Did not find adata.var[\'highly_variable\']. '
-+            'Either your data already only consists of highly-variable genes '
-+            'or consider running `pp.highly_variable_genes` first.'
-+        )
-+    if use_highly_variable is None:
-+        use_highly_variable = True if 'highly_variable' in adata.var.keys() else False
-+    if use_highly_variable:
-+        logg.info('    on highly variable genes')
-+    adata_comp = (
-+        adata[:, adata.var['highly_variable']] if use_highly_variable else adata
-+    )
-+
-+    if n_comps is None:
-+        min_dim = min(adata_comp.n_vars, adata_comp.n_obs)
-+        if settings.N_PCS >= min_dim:
-+            n_comps = min_dim - 1
-+        else:
-+            n_comps = settings.N_PCS
-+
-+    logg.info(f'    with n_comps={n_comps}')
-+
-+    random_state = check_random_state(random_state)
-+
-+    X = adata_comp.X
-+
-+    if chunked:
-+        if not zero_center or random_state or svd_solver != 'arpack':
-+            logg.debug('Ignoring zero_center, random_state, svd_solver')
-+
-+        from sklearn.decomposition import IncrementalPCA
-+
-+        X_pca = np.zeros((X.shape[0], n_comps), X.dtype)
-+
-+        pca_ = IncrementalPCA(n_components=n_comps)
-+
-+        for chunk, _, _ in adata_comp.chunked_X(chunk_size):
-+            chunk = chunk.toarray() if issparse(chunk) else chunk
-+            pca_.partial_fit(chunk)
-+
-+        for chunk, start, end in adata_comp.chunked_X(chunk_size):
-+            chunk = chunk.toarray() if issparse(chunk) else chunk
-+            X_pca[start:end] = pca_.transform(chunk)
-+    elif (not issparse(X) or svd_solver == "randomized") and zero_center:
-+        from ._decomposition import PCA
-+
-+        if issparse(X) and svd_solver == "randomized":
-+            # This  is for backwards compat. Better behaviour would be to either error or use arpack.
-+            logg.warning(
-+                "svd_solver 'randomized' does not work with sparse input. Densifying the array. "
-+                "This may take a very large amount of memory."
-+            )
-+            X = X.toarray()
-+        pca_ = PCA(
-+            n_components=n_comps, svd_solver=svd_solver, random_state=random_state
-+        )
-+        X_pca = pca_.fit_transform(X)
-+    elif issparse(X) and zero_center:
-+        from ._decomposition import PCA
-+
-+        if svd_solver == "auto":
-+            svd_solver = "arpack"
-+        if svd_solver not in {'lobpcg', 'arpack'}:
-+            raise ValueError(
-+                'svd_solver: {svd_solver} can not be used with sparse input.\n'
-+                'Use "arpack" (the default) or "lobpcg" instead.'
-+            )
-+
-+        output = _pca_with_sparse(
-+            X, n_comps, solver=svd_solver, random_state=random_state
-+        )
-+        # this is just a wrapper for the results
-+        X_pca = output['X_pca']
-+        pca_ = PCA(n_components=n_comps, svd_solver=svd_solver)
-+        pca_.components_ = output['components']
-+        pca_.explained_variance_ = output['variance']
-+        pca_.explained_variance_ratio_ = output['variance_ratio']
-+    elif not zero_center:
-+        from ._decomposition import TruncatedSVD
-+
-+        logg.debug(
-+            '    without zero-centering: \n'
-+            '    the explained variance does not correspond to the exact statistical defintion\n'
-+            '    the first component, e.g., might be heavily influenced by different means\n'
-+            '    the following components often resemble the exact PCA very closely'
-+        )
-+        pca_ = TruncatedSVD(
-+            n_components=n_comps, random_state=random_state, algorithm=svd_solver
-+        )
-+        X_pca = pca_.fit_transform(X)
-+    else:
-+        raise Exception("This shouldn't happen. Please open a bug report.")
-+
-+    if X_pca.dtype.descr != np.dtype(dtype).descr:
-+        X_pca = X_pca.astype(dtype)
-+
-+    if data_is_AnnData:
-+        adata.obsm['X_pca'] = X_pca
-+        adata.uns['pca'] = {}
-+        adata.uns['pca']['params'] = {
-+            'zero_center': zero_center,
-+            'use_highly_variable': use_highly_variable,
-+        }
-+        if use_highly_variable:
-+            adata.varm['PCs'] = np.zeros(shape=(adata.n_vars, n_comps))
-+            adata.varm['PCs'][adata.var['highly_variable']] = pca_.components_.T
-+        else:
-+            adata.varm['PCs'] = pca_.components_.T
-+        adata.uns['pca']['variance'] = pca_.explained_variance_
-+        adata.uns['pca']['variance_ratio'] = pca_.explained_variance_ratio_
-+        logg.info('    finished', time=logg_start)
-+        logg.debug(
-+            'and added\n'
-+            '    \'X_pca\', the PCA coordinates (adata.obs)\n'
-+            '    \'PC1\', \'PC2\', ..., the loadings (adata.var)\n'
-+            '    \'pca_variance\', the variance / eigenvalues (adata.uns)\n'
-+            '    \'pca_variance_ratio\', the variance ratio (adata.uns)'
-+        )
-+        return adata if copy else None
-+    else:
-+        logg.info('    finished', time=logg_start)
-+        if return_info:
-+            return (
-+                X_pca,
-+                pca_.components_,
-+                pca_.explained_variance_ratio_,
-+                pca_.explained_variance_,
-+            )
-+        else:
-+            return X_pca
-+
-+
-+def _pca_with_sparse(X, npcs, solver='arpack', mu=None, random_state=None):
-+    random_state = check_random_state(random_state)
-+    np.random.set_state(random_state.get_state())
-+    random_init = np.random.rand(np.min(X.shape))
-+    X = check_array(X, accept_sparse=['csr', 'csc'])
-+
-+    if mu is None:
-+        mu = X.mean(0).A.flatten()[None, :]
-+    mdot = mu.dot
-+    mmat = mdot
-+    mhdot = mu.T.dot
-+    mhmat = mu.T.dot
-+    Xdot = X.dot
-+    Xmat = Xdot
-+    XHdot = X.T.conj().dot
-+    XHmat = XHdot
-+    ones = np.ones(X.shape[0])[None, :].dot
-+
-+    def matvec(x):
-+        return Xdot(x) - mdot(x)
-+
-+    def matmat(x):
-+        return Xmat(x) - mmat(x)
-+
-+    def rmatvec(x):
-+        return XHdot(x) - mhdot(ones(x))
-+
-+    def rmatmat(x):
-+        return XHmat(x) - mhmat(ones(x))
-+
-+    XL = LinearOperator(
-+        matvec=matvec,
-+        dtype=X.dtype,
-+        matmat=matmat,
-+        shape=X.shape,
-+        rmatvec=rmatvec,
-+        rmatmat=rmatmat,
-+    )
-+
-+    u, s, v = svds(XL, solver=solver, k=npcs, v0=random_init)
-+    u, v = svd_flip(u, v)
-+    idx = np.argsort(-s)
-+    v = v[idx, :]
-+
-+    X_pca = (u * s)[:, idx]
-+    ev = s[idx] ** 2 / (X.shape[0] - 1)
-+
-+    total_var = _get_mean_var(X)[1].sum()
-+    ev_ratio = ev / total_var
-+
-+    output = {
-+        'X_pca': X_pca,
-+        'variance': ev,
-+        'variance_ratio': ev_ratio,
-+        'components': v,
-+    }
-+    return output
---- a/scanpy_scripts/lib/_legacy/_representation.py
-+++ b/scanpy_scripts/lib/_legacy/_representation.py
-@@ -0,0 +1,52 @@
-+# Derived from Scanpy 1.9.3 (BSD-3-Clause); local fallback PCA.
-+# See LICENSE.scanpy, LICENSE.sklearn, LICENSE.scipy and LICENSE.scrublet.
-+from scanpy import logging as logg, settings
-+from ._pca import pca
-+
-+
-+def _choose_representation(adata, use_rep=None, n_pcs=None, silent=False):
-+    verbosity = settings.verbosity
-+    if silent and settings.verbosity > 1:
-+        settings.verbosity = 1
-+    if use_rep is None and n_pcs == 0:  # backwards compat for specifying `.X`
-+        use_rep = 'X'
-+    if use_rep is None:
-+        if adata.n_vars > settings.N_PCS:
-+            if 'X_pca' in adata.obsm.keys():
-+                if n_pcs is not None and n_pcs > adata.obsm['X_pca'].shape[1]:
-+                    raise ValueError(
-+                        '`X_pca` does not have enough PCs. Rerun `sc.pp.pca` with adjusted `n_comps`.'
-+                    )
-+                X = adata.obsm['X_pca'][:, :n_pcs]
-+                logg.info(f'    using \'X_pca\' with n_pcs = {X.shape[1]}')
-+            else:
-+                logg.warning(
-+                    f'You’re trying to run this on {adata.n_vars} dimensions of `.X`, '
-+                    'if you really want this, set `use_rep=\'X\'`.\n         '
-+                    'Falling back to preprocessing with `sc.pp.pca` and default params.'
-+                )
-+                X = pca(adata.X)
-+                adata.obsm['X_pca'] = X[:, :n_pcs]
-+        else:
-+            logg.info('    using data matrix X directly')
-+            X = adata.X
-+    else:
-+        if use_rep in adata.obsm.keys() and n_pcs is not None:
-+            if n_pcs > adata.obsm[use_rep].shape[1]:
-+                raise ValueError(
-+                    f'{use_rep} does not have enough Dimensions. Provide a '
-+                    'Representation with equal or more dimensions than'
-+                    '`n_pcs` or lower `n_pcs` '
-+                )
-+            X = adata.obsm[use_rep][:, :n_pcs]
-+        elif use_rep in adata.obsm.keys() and n_pcs is None:
-+            X = adata.obsm[use_rep]
-+        elif use_rep == 'X':
-+            X = adata.X
-+        else:
-+            raise ValueError(
-+                'Did not find {} in `.obsm.keys()`. '
-+                'You need to compute it first.'.format(use_rep)
-+            )
-+    settings.verbosity = verbosity  # resetting verbosity
-+    return X
---- a/scanpy_scripts/lib/_legacy/_scrublet.py
-+++ b/scanpy_scripts/lib/_legacy/_scrublet.py
-@@ -0,0 +1,321 @@
-+# Derived from Scanpy 1.9.3 (BSD-3-Clause); scoped Scrublet PCA pipelines.
-+# See LICENSE.scanpy, LICENSE.sklearn, LICENSE.scipy and LICENSE.scrublet.
-+from anndata import AnnData
-+from typing import Optional
-+import numpy as np
-+import pandas as pd
-+from scipy import sparse
-+
-+
-+from scanpy import logging as logg
-+from scanpy import preprocessing as pp
-+from scanpy.get import _get_obs_rep
-+
-+
-+def scrublet(
-+    adata: AnnData,
-+    adata_sim: Optional[AnnData] = None,
-+    batch_key: str = None,
-+    sim_doublet_ratio: float = 2.0,
-+    expected_doublet_rate: float = 0.05,
-+    stdev_doublet_rate: float = 0.02,
-+    synthetic_doublet_umi_subsampling: float = 1.0,
-+    knn_dist_metric: str = 'euclidean',
-+    normalize_variance: bool = True,
-+    log_transform: bool = False,
-+    mean_center: bool = True,
-+    n_prin_comps: int = 30,
-+    use_approx_neighbors: bool = True,
-+    get_doublet_neighbor_parents: bool = False,
-+    n_neighbors: Optional[int] = None,
-+    threshold: Optional[float] = None,
-+    verbose: bool = True,
-+    copy: bool = False,
-+    random_state: int = 0,
-+) -> Optional[AnnData]:
-+    try:
-+        from . import _scrublet_helpers as sl
-+    except ImportError:
-+        raise ImportError(
-+            'Please install scrublet: `pip install scrublet` or `conda install scrublet`.'
-+        )
-+
-+    if copy:
-+        adata = adata.copy()
-+
-+    start = logg.info('Running Scrublet')
-+
-+    adata_obs = adata.copy()
-+
-+    def _run_scrublet(ad_obs, ad_sim=None):
-+
-+        # With no adata_sim we assume the regular use case, starting with raw
-+        # counts and simulating doublets
-+
-+        if ad_sim is None:
-+
-+            pp.filter_genes(ad_obs, min_cells=3)
-+            pp.filter_cells(ad_obs, min_genes=3)
-+
-+            # Doublet simulation will be based on the un-normalised counts, but on the
-+            # selection of genes following normalisation and variability filtering. So
-+            # we need to save the raw and subset at the same time.
-+
-+            ad_obs.layers['raw'] = ad_obs.X.copy()
-+            pp.normalize_total(ad_obs)
-+
-+            # HVG process needs log'd data.
-+
-+            logged = pp.log1p(ad_obs, copy=True)
-+            pp.highly_variable_genes(logged)
-+            ad_obs = ad_obs[:, logged.var['highly_variable']]
-+
-+            # Simulate the doublets based on the raw expressions from the normalised
-+            # and filtered object.
-+
-+            ad_sim = scrublet_simulate_doublets(
-+                ad_obs,
-+                layer='raw',
-+                sim_doublet_ratio=sim_doublet_ratio,
-+                synthetic_doublet_umi_subsampling=synthetic_doublet_umi_subsampling,
-+            )
-+
-+            if log_transform:
-+                pp.log1p(ad_obs)
-+                pp.log1p(ad_sim)
-+
-+            # Now normalise simulated and observed in the same way
-+
-+            pp.normalize_total(ad_obs, target_sum=1e6)
-+            pp.normalize_total(ad_sim, target_sum=1e6)
-+
-+        ad_obs = _scrublet_call_doublets(
-+            adata_obs=ad_obs,
-+            adata_sim=ad_sim,
-+            n_neighbors=n_neighbors,
-+            expected_doublet_rate=expected_doublet_rate,
-+            stdev_doublet_rate=stdev_doublet_rate,
-+            mean_center=mean_center,
-+            normalize_variance=normalize_variance,
-+            n_prin_comps=n_prin_comps,
-+            use_approx_neighbors=use_approx_neighbors,
-+            knn_dist_metric=knn_dist_metric,
-+            get_doublet_neighbor_parents=get_doublet_neighbor_parents,
-+            threshold=threshold,
-+            random_state=random_state,
-+            verbose=verbose,
-+        )
-+
-+        return {'obs': ad_obs.obs, 'uns': ad_obs.uns['scrublet']}
-+
-+    if batch_key is not None:
-+        if batch_key not in adata.obs.keys():
-+            raise ValueError(
-+                '`batch_key` must be a column of .obs in the input annData object.'
-+            )
-+
-+        # Run Scrublet independently on batches and return just the
-+        # scrublet-relevant parts of the objects to add to the input object
-+
-+        batches = np.unique(adata.obs[batch_key])
-+        scrubbed = [
-+            _run_scrublet(
-+                adata_obs[
-+                    adata_obs.obs[batch_key] == batch,
-+                ],
-+                adata_sim,
-+            )
-+            for batch in batches
-+        ]
-+        scrubbed_obs = pd.concat([scrub['obs'] for scrub in scrubbed])
-+
-+        # Now reset the obs to get the scrublet scores
-+
-+        adata.obs = scrubbed_obs.loc[adata.obs_names.values]
-+
-+        # Save the .uns from each batch separately
-+
-+        adata.uns['scrublet'] = {}
-+        adata.uns['scrublet']['batches'] = dict(
-+            zip(batches, [scrub['uns'] for scrub in scrubbed])
-+        )
-+
-+        # Record that we've done batched analysis, so e.g. the plotting
-+        # function knows what to do.
-+
-+        adata.uns['scrublet']['batched_by'] = batch_key
-+
-+    else:
-+        scrubbed = _run_scrublet(adata_obs, adata_sim)
-+
-+        # Copy outcomes to input object from our processed version
-+
-+        adata.obs['doublet_score'] = scrubbed['obs']['doublet_score']
-+        adata.obs['predicted_doublet'] = scrubbed['obs']['predicted_doublet']
-+        adata.uns['scrublet'] = scrubbed['uns']
-+
-+    logg.info('    Scrublet finished', time=start)
-+
-+    if copy:
-+        return adata
-+    else:
-+        return None
-+
-+
-+def _scrublet_call_doublets(
-+    adata_obs: AnnData,
-+    adata_sim: AnnData,
-+    n_neighbors: Optional[int] = None,
-+    expected_doublet_rate: float = 0.05,
-+    stdev_doublet_rate: float = 0.02,
-+    mean_center: bool = True,
-+    normalize_variance: bool = True,
-+    n_prin_comps: int = 30,
-+    use_approx_neighbors: bool = True,
-+    knn_dist_metric: str = 'euclidean',
-+    get_doublet_neighbor_parents: bool = False,
-+    threshold: Optional[float] = None,
-+    random_state: int = 0,
-+    verbose: bool = True,
-+) -> AnnData:
-+    try:
-+        from . import _scrublet_helpers as sl
-+    except ImportError:
-+        raise ImportError(
-+            'Please install scrublet: `pip install scrublet` or `conda install scrublet`.'
-+        )
-+
-+    # Estimate n_neighbors if not provided, and create scrublet object.
-+
-+    if n_neighbors is None:
-+        n_neighbors = int(round(0.5 * np.sqrt(adata_obs.shape[0])))
-+
-+    # Note: Scrublet() will sparse adata_obs.X if it's not already, but this
-+    # matrix won't get used if we pre-set the normalised slots.
-+
-+    scrub = sl.Scrublet(
-+        adata_obs.X,
-+        n_neighbors=n_neighbors,
-+        expected_doublet_rate=expected_doublet_rate,
-+        stdev_doublet_rate=stdev_doublet_rate,
-+        random_state=random_state,
-+    )
-+
-+    # Ensure normalised matrix sparseness as Scrublet does
-+    # https://github.com/swolock/scrublet/blob/67f8ecbad14e8e1aa9c89b43dac6638cebe38640/src/scrublet/scrublet.py#L100
-+
-+    scrub._E_obs_norm = sparse.csc_matrix(adata_obs.X)
-+    scrub._E_sim_norm = sparse.csc_matrix(adata_sim.X)
-+
-+    scrub.doublet_parents_ = adata_sim.obsm['doublet_parents']
-+
-+    # Call scrublet-specific preprocessing where specified
-+
-+    if mean_center and normalize_variance:
-+        sl.pipeline_zscore(scrub)
-+    elif mean_center:
-+        sl.pipeline_mean_center(scrub)
-+    elif normalize_variance:
-+        sl.pipeline_normalize_variance(scrub)
-+
-+    # Do PCA. Scrublet fits to the observed matrix and decomposes both observed
-+    # and simulated based on that fit, so we'll just let it do its thing rather
-+    # than trying to use Scanpy's PCA wrapper of the same functions.
-+
-+    if mean_center:
-+        logg.info('Embedding transcriptomes using PCA...')
-+        # Sklearn PCA doesn't like matrices, so convert to arrays
-+        if isinstance(scrub._E_obs_norm, np.matrix):
-+            scrub._E_obs_norm = np.asarray(scrub._E_obs_norm)
-+        if isinstance(scrub._E_sim_norm, np.matrix):
-+            scrub._E_sim_norm = np.asarray(scrub._E_sim_norm)
-+        sl.pipeline_pca(
-+            scrub, n_prin_comps=n_prin_comps, random_state=scrub.random_state
-+        )
-+    else:
-+        logg.info('Embedding transcriptomes using Truncated SVD...')
-+        sl.pipeline_truncated_svd(
-+            scrub, n_prin_comps=n_prin_comps, random_state=scrub.random_state
-+        )
-+
-+    # Score the doublets
-+
-+    scrub.calculate_doublet_scores(
-+        use_approx_neighbors=use_approx_neighbors,
-+        distance_metric=knn_dist_metric,
-+        get_doublet_neighbor_parents=get_doublet_neighbor_parents,
-+    )
-+
-+    # Actually call doublets
-+
-+    scrub.call_doublets(threshold=threshold, verbose=verbose)
-+
-+    # Store results in AnnData for return
-+
-+    adata_obs.obs['doublet_score'] = scrub.doublet_scores_obs_
-+
-+    # Store doublet Scrublet metadata
-+
-+    adata_obs.uns['scrublet'] = {
-+        'doublet_scores_sim': scrub.doublet_scores_sim_,
-+        'doublet_parents': adata_sim.obsm['doublet_parents'],
-+        'parameters': {
-+            'expected_doublet_rate': expected_doublet_rate,
-+            'sim_doublet_ratio': (
-+                adata_sim.uns.get('scrublet', {})
-+                .get('parameters', {})
-+                .get('sim_doublet_ratio', None)
-+            ),
-+            'n_neighbors': n_neighbors,
-+            'random_state': random_state,
-+        },
-+    }
-+
-+    # If threshold hasn't been located successfully then we couldn't make any
-+    # predictions. The user will get a warning from Scrublet, but we need to
-+    # set the boolean so that any downstream filtering on
-+    # predicted_doublet=False doesn't incorrectly filter cells. The user can
-+    # still use this object to generate the plot and derive a threshold
-+    # manually.
-+
-+    if hasattr(scrub, 'threshold_'):
-+        adata_obs.uns['scrublet']['threshold'] = scrub.threshold_
-+        adata_obs.obs['predicted_doublet'] = scrub.predicted_doublets_
-+    else:
-+        adata_obs.obs['predicted_doublet'] = False
-+
-+    if get_doublet_neighbor_parents:
-+        adata_obs.uns['scrublet'][
-+            'doublet_neighbor_parents'
-+        ] = scrub.doublet_neighbor_parents_
-+
-+    return adata_obs
-+
-+
-+def scrublet_simulate_doublets(
-+    adata: AnnData,
-+    layer=None,
-+    sim_doublet_ratio: float = 2.0,
-+    synthetic_doublet_umi_subsampling: float = 1.0,
-+    random_seed: int = 0,
-+) -> AnnData:
-+    try:
-+        from . import _scrublet_helpers as sl
-+    except ImportError:
-+        raise ImportError(
-+            'Please install scrublet: `pip install scrublet` or `conda install scrublet`.'
-+        )
-+
-+    X = _get_obs_rep(adata, layer=layer)
-+    scrub = sl.Scrublet(X)
-+
-+    scrub.simulate_doublets(
-+        sim_doublet_ratio=sim_doublet_ratio,
-+        synthetic_doublet_umi_subsampling=synthetic_doublet_umi_subsampling,
-+    )
-+
-+    adata_sim = AnnData(scrub._E_sim)
-+    adata_sim.obs['n_counts'] = scrub._total_counts_sim
-+    adata_sim.obsm['doublet_parents'] = scrub.doublet_parents_
-+    adata_sim.uns['scrublet'] = {'parameters': {'sim_doublet_ratio': sim_doublet_ratio}}
-+    return adata_sim
---- a/scanpy_scripts/lib/_legacy/_scrublet_helpers.py
-+++ b/scanpy_scripts/lib/_legacy/_scrublet_helpers.py
-@@ -0,0 +1,27 @@
-+# Derived from Scrublet 0.2.3 (MIT); local PCA estimators.
-+# See LICENSE.scanpy, LICENSE.sklearn, LICENSE.scipy and LICENSE.scrublet.
-+# Forward the unchanged Scrublet API; override only the two PCA pipelines.
-+from scrublet import *
-+import scipy.sparse
-+from ._decomposition import PCA, TruncatedSVD
-+
-+
-+def pipeline_truncated_svd(self, n_prin_comps=30, random_state=0, algorithm='arpack'):
-+    svd = TruncatedSVD(n_components=n_prin_comps, random_state=random_state, algorithm=algorithm).fit(self._E_obs_norm)
-+    self.set_manifold(svd.transform(self._E_obs_norm), svd.transform(self._E_sim_norm))
-+    return
-+
-+def pipeline_pca(self, n_prin_comps=50, random_state=0, svd_solver='arpack'):
-+    if scipy.sparse.issparse(self._E_obs_norm):
-+        X_obs = self._E_obs_norm.toarray()
-+    else:
-+        X_obs = self._E_obs_norm
-+    if scipy.sparse.issparse(self._E_sim_norm):
-+        X_sim = self._E_sim_norm.toarray()
-+    else:
-+        X_sim = self._E_sim_norm
-+
-+    pca = PCA(n_components=n_prin_comps, random_state=random_state, svd_solver=svd_solver).fit(X_obs)
-+    self.set_manifold(pca.transform(X_obs), pca.transform(X_sim))
-+    return
-+
---- a/scanpy_scripts/lib/_legacy/_svds.py
-+++ b/scanpy_scripts/lib/_legacy/_svds.py
-@@ -0,0 +1,397 @@
-+# Derived from SciPy 1.8.1 (BSD-3-Clause); imports made absolute.
-+# See LICENSE.scanpy, LICENSE.sklearn, LICENSE.scipy and LICENSE.scrublet.
-+import os
-+import numpy as np
-+
-+from scipy.sparse.linalg._eigen.arpack import _arpack  # type: ignore[attr-defined]
-+from scipy.sparse.linalg import eigsh
-+
-+from scipy._lib._util import check_random_state
-+from scipy.sparse.linalg._interface import LinearOperator, aslinearoperator
-+from scipy.sparse.linalg._eigen.lobpcg import lobpcg  # type: ignore[no-redef]
-+if os.environ.get("USE_PROPACK"):
-+    from scipy.sparse.linalg._svdp import _svdp
-+    HAS_PROPACK = True
-+else:
-+    HAS_PROPACK = False
-+
-+arpack_int = _arpack.timing.nbx.dtype
-+__all__ = ['svds']
++from scipy.sparse.linalg import LinearOperator, eigsh, svds as modern_svds
++from scipy.sparse.linalg._eigen._svds import _iv
 +
 +
 +def _augmented_orthonormal_cols(x, k, random_state):
-+    # extract the shape of the x array
 +    n, m = x.shape
-+    # create the expanded array and copy x into it
-+    y = np.empty((n, m+k), dtype=x.dtype)
++    y = np.empty((n, m + k), dtype=x.dtype)
 +    y[:, :m] = x
-+    # do some modified gram schmidt to add k random orthonormal vectors
 +    for i in range(k):
-+        # sample a random initial vector
 +        v = random_state.standard_normal(size=n)
 +        if np.iscomplexobj(x):
-+            v = v + 1j*random_state.standard_normal(size=n)
-+        # subtract projections onto the existing unit length vectors
-+        for j in range(m+i):
++            v = v + 1j * random_state.standard_normal(size=n)
++        for j in range(m + i):
 +            u = y[:, j]
-+            v -= (np.dot(v, u.conj()) / np.dot(u, u.conj())) * u
-+        # normalize v
++            v -= np.dot(v, u.conj()) / np.dot(u, u.conj()) * u
 +        v /= np.sqrt(np.dot(v, v.conj()))
-+        # add v into the output array
-+        y[:, m+i] = v
-+    # return the expanded array
++        y[:, m + i] = v
 +    return y
 +
 +
@@ -952,231 +130,21 @@ Upstream source versions and licenses are recorded in the added modules.
 +    return x.T.conj()
 +
 +
-+def _iv(A, k, ncv, tol, which, v0, maxiter,
-+        return_singular, solver, random_state):
-+
-+    # input validation/standardization for `solver`
-+    # out of order because it's needed for other parameters
-+    solver = str(solver).lower()
-+    solvers = {"arpack", "lobpcg", "propack"}
-+    if solver not in solvers:
-+        raise ValueError(f"solver must be one of {solvers}.")
-+
-+    # input validation/standardization for `A`
-+    A = aslinearoperator(A)  # this takes care of some input validation
-+    if not (np.issubdtype(A.dtype, np.complexfloating)
-+            or np.issubdtype(A.dtype, np.floating)):
-+        message = "`A` must be of floating or complex floating data type."
-+        raise ValueError(message)
-+    if np.prod(A.shape) == 0:
-+        message = "`A` must not be empty."
-+        raise ValueError(message)
-+
-+    # input validation/standardization for `k`
-+    kmax = min(A.shape) if solver == 'propack' else min(A.shape) - 1
-+    if int(k) != k or not (0 < k <= kmax):
-+        message = "`k` must be an integer satisfying `0 < k < min(A.shape)`."
-+        raise ValueError(message)
-+    k = int(k)
-+
-+    # input validation/standardization for `ncv`
-+    if solver == "arpack" and ncv is not None:
-+        if int(ncv) != ncv or not (k < ncv < min(A.shape)):
-+            message = ("`ncv` must be an integer satisfying "
-+                       "`k < ncv < min(A.shape)`.")
-+            raise ValueError(message)
-+        ncv = int(ncv)
-+
-+    # input validation/standardization for `tol`
-+    if tol < 0 or not np.isfinite(tol):
-+        message = "`tol` must be a non-negative floating point value."
-+        raise ValueError(message)
-+    tol = float(tol)
-+
-+    # input validation/standardization for `which`
-+    which = str(which).upper()
-+    whichs = {'LM', 'SM'}
-+    if which not in whichs:
-+        raise ValueError(f"`which` must be in {whichs}.")
-+
-+    # input validation/standardization for `v0`
-+    if v0 is not None:
-+        v0 = np.atleast_1d(v0)
-+        if not (np.issubdtype(v0.dtype, np.complexfloating)
-+                or np.issubdtype(v0.dtype, np.floating)):
-+            message = ("`v0` must be of floating or complex floating "
-+                       "data type.")
-+            raise ValueError(message)
-+
-+        shape = (A.shape[0],) if solver == 'propack' else (min(A.shape),)
-+        if v0.shape != shape:
-+            message = f"`v0` must have shape {shape}."
-+            raise ValueError(message)
-+
-+    # input validation/standardization for `maxiter`
-+    if maxiter is not None and (int(maxiter) != maxiter or maxiter <= 0):
-+        message = "`maxiter` must be a positive integer."
-+        raise ValueError(message)
-+    maxiter = int(maxiter) if maxiter is not None else maxiter
-+
-+    # input validation/standardization for `return_singular_vectors`
-+    # not going to be flexible with this; too complicated for little gain
-+    rs_options = {True, False, "vh", "u"}
-+    if return_singular not in rs_options:
-+        raise ValueError(f"`return_singular_vectors` must be in {rs_options}.")
-+
-+    random_state = check_random_state(random_state)
-+
-+    return (A, k, ncv, tol, which, v0, maxiter,
-+            return_singular, solver, random_state)
-+
-+
-+def svds(A, k=6, ncv=None, tol=0, which='LM', v0=None,
-+         maxiter=None, return_singular_vectors=True,
-+         solver='arpack', random_state=None, options=None):
-+    """
-+    Partial singular value decomposition of a sparse matrix.
-+
-+    Compute the largest or smallest `k` singular values and corresponding
-+    singular vectors of a sparse matrix `A`. The order in which the singular
-+    values are returned is not guaranteed.
-+
-+    In the descriptions below, let ``M, N = A.shape``.
-+
-+    Parameters
-+    ----------
-+    A : sparse matrix or LinearOperator
-+        Matrix to decompose.
-+    k : int, default: 6
-+        Number of singular values and singular vectors to compute.
-+        Must satisfy ``1 <= k <= kmax``, where ``kmax=min(M, N)`` for
-+        ``solver='propack'`` and ``kmax=min(M, N) - 1`` otherwise.
-+    ncv : int, optional
-+        When ``solver='arpack'``, this is the number of Lanczos vectors
-+        generated. See :ref:`'arpack' <sparse.linalg.svds-arpack>` for details.
-+        When ``solver='lobpcg'`` or ``solver='propack'``, this parameter is
-+        ignored.
-+    tol : float, optional
-+        Tolerance for singular values. Zero (default) means machine precision.
-+    which : {'LM', 'SM'}
-+        Which `k` singular values to find: either the largest magnitude ('LM')
-+        or smallest magnitude ('SM') singular values.
-+    v0 : ndarray, optional
-+        The starting vector for iteration; see method-specific
-+        documentation (:ref:`'arpack' <sparse.linalg.svds-arpack>`,
-+        :ref:`'lobpcg' <sparse.linalg.svds-lobpcg>`), or
-+        :ref:`'propack' <sparse.linalg.svds-propack>` for details.
-+    maxiter : int, optional
-+        Maximum number of iterations; see method-specific
-+        documentation (:ref:`'arpack' <sparse.linalg.svds-arpack>`,
-+        :ref:`'lobpcg' <sparse.linalg.svds-lobpcg>`), or
-+        :ref:`'propack' <sparse.linalg.svds-propack>` for details.
-+    return_singular_vectors : {True, False, "u", "vh"}
-+        Singular values are always computed and returned; this parameter
-+        controls the computation and return of singular vectors.
-+
-+        - ``True``: return singular vectors.
-+        - ``False``: do not return singular vectors.
-+        - ``"u"``: if ``M <= N``, compute only the left singular vectors and
-+          return ``None`` for the right singular vectors. Otherwise, compute
-+          all singular vectors.
-+        - ``"vh"``: if ``M > N``, compute only the right singular vectors and
-+          return ``None`` for the left singular vectors. Otherwise, compute
-+          all singular vectors.
-+
-+        If ``solver='propack'``, the option is respected regardless of the
-+        matrix shape.
-+
-+    solver :  {'arpack', 'propack', 'lobpcg'}, optional
-+            The solver used.
-+            :ref:`'arpack' <sparse.linalg.svds-arpack>`,
-+            :ref:`'lobpcg' <sparse.linalg.svds-lobpcg>`, and
-+            :ref:`'propack' <sparse.linalg.svds-propack>` are supported.
-+            Default: `'arpack'`.
-+    random_state : {None, int, `numpy.random.Generator`,
-+                    `numpy.random.RandomState`}, optional
-+
-+        Pseudorandom number generator state used to generate resamples.
-+
-+        If `random_state` is ``None`` (or `np.random`), the
-+        `numpy.random.RandomState` singleton is used.
-+        If `random_state` is an int, a new ``RandomState`` instance is used,
-+        seeded with `random_state`.
-+        If `random_state` is already a ``Generator`` or ``RandomState``
-+        instance then that instance is used.
-+    options : dict, optional
-+        A dictionary of solver-specific options. No solver-specific options
-+        are currently supported; this parameter is reserved for future use.
-+
-+    Returns
-+    -------
-+    u : ndarray, shape=(M, k)
-+        Unitary matrix having left singular vectors as columns.
-+    s : ndarray, shape=(k,)
-+        The singular values.
-+    vh : ndarray, shape=(k, N)
-+        Unitary matrix having right singular vectors as rows.
-+
-+    Notes
-+    -----
-+    This is a naive implementation using ARPACK or LOBPCG as an eigensolver
-+    on ``A.conj().T @ A`` or ``A @ A.conj().T``, depending on which one is more
-+    efficient.
-+
-+    Examples
-+    --------
-+    Construct a matrix ``A`` from singular values and vectors.
-+
-+    >>> from scipy.stats import ortho_group
-+    >>> from scipy.sparse import csc_matrix, diags
-+    >>> from scipy.sparse.linalg import svds
-+    >>> rng = np.random.default_rng()
-+    >>> orthogonal = csc_matrix(ortho_group.rvs(10, random_state=rng))
-+    >>> s = [0.0001, 0.001, 3, 4, 5]  # singular values
-+    >>> u = orthogonal[:, :5]         # left singular vectors
-+    >>> vT = orthogonal[:, 5:].T      # right singular vectors
-+    >>> A = u @ diags(s) @ vT
-+
-+    With only three singular values/vectors, the SVD approximates the original
-+    matrix.
-+
-+    >>> u2, s2, vT2 = svds(A, k=3)
-+    >>> A2 = u2 @ np.diag(s2) @ vT2
-+    >>> np.allclose(A2, A.toarray(), atol=1e-3)
-+    True
-+
-+    With all five singular values/vectors, we can reproduce the original
-+    matrix.
-+
-+    >>> u3, s3, vT3 = svds(A, k=5)
-+    >>> A3 = u3 @ np.diag(s3) @ vT3
-+    >>> np.allclose(A3, A.toarray())
-+    True
-+
-+    The singular values match the expected singular values, and the singular
-+    vectors are as expected up to a difference in sign.
-+
-+    >>> (np.allclose(s3, s) and
-+    ...  np.allclose(np.abs(u3), np.abs(u.toarray())) and
-+    ...  np.allclose(np.abs(vT3), np.abs(vT.toarray())))
-+    True
-+
-+    The singular vectors are also orthogonal.
-+    >>> (np.allclose(u3.T @ u3, np.eye(5)) and
-+    ...  np.allclose(vT3 @ vT3.T, np.eye(5)))
-+    True
-+
-+    """
-+    rs_was_None = random_state is None  # avoid changing v0 for arpack/lobpcg
-+
-+    args = _iv(A, k, ncv, tol, which, v0, maxiter, return_singular_vectors,
-+               solver, random_state)
++def svds(A, k=6, ncv=None, tol=0, which='LM', v0=None, maxiter=None,
++         return_singular_vectors=True, solver='arpack', random_state=None,
++         options=None):
++    if str(solver).lower() != 'arpack':
++        return modern_svds(
++            A, k=k, ncv=ncv, tol=tol, which=which, v0=v0, maxiter=maxiter,
++            return_singular_vectors=return_singular_vectors, solver=solver,
++            random_state=random_state, options=options,
++        )
++    rs_was_None = random_state is None
++    args = _iv(A, k, ncv, tol, which, v0, maxiter,
++               return_singular_vectors, solver, random_state)
 +    (A, k, ncv, tol, which, v0, maxiter,
 +     return_singular_vectors, solver, random_state) = args
-+
-+    largest = (which == 'LM')
 +    n, m = A.shape
-+
 +    if n > m:
 +        X_dot = A.matvec
 +        X_matmat = A.matmat
@@ -1188,83 +156,28 @@ Upstream source versions and licenses are recorded in the added modules.
 +        XH_dot = A.matvec
 +        XH_mat = A.matmat
 +
-+        dtype = getattr(A, 'dtype', None)
-+        if dtype is None:
-+            dtype = A.dot(np.zeros([m, 1])).dtype
-+
 +    def matvec_XH_X(x):
 +        return XH_dot(X_dot(x))
 +
 +    def matmat_XH_X(x):
 +        return XH_mat(X_matmat(x))
-+
-+    XH_X = LinearOperator(matvec=matvec_XH_X, dtype=A.dtype,
-+                          matmat=matmat_XH_X,
-+                          shape=(min(A.shape), min(A.shape)))
-+
-+    # Get a low rank approximation of the implicitly defined gramian matrix.
-+    # This is not a stable way to approach the problem.
-+    if solver == 'lobpcg':
-+
-+        if k == 1 and v0 is not None:
-+            X = np.reshape(v0, (-1, 1))
-+        else:
-+            if rs_was_None:
-+                X = np.random.RandomState(52).randn(min(A.shape), k)
-+            else:
-+                X = random_state.uniform(size=(min(A.shape), k))
-+
-+        eigvals, eigvec = lobpcg(XH_X, X, tol=tol ** 2, maxiter=maxiter,
-+                                 largest=largest, )
-+
-+    elif solver == 'propack':
-+        if not HAS_PROPACK:
-+            raise ValueError("`solver='propack'` is opt-in due to potential issues on Windows, "
-+                             "it can be enabled by setting the `USE_PROPACK` environment "
-+                             "variable before importing scipy")
-+        jobu = return_singular_vectors in {True, 'u'}
-+        jobv = return_singular_vectors in {True, 'vh'}
-+        irl_mode = (which == 'SM')
-+        res = _svdp(A, k=k, tol=tol**2, which=which, maxiter=None,
-+                    compute_u=jobu, compute_v=jobv, irl_mode=irl_mode,
-+                    kmax=maxiter, v0=v0, random_state=random_state)
-+
-+        u, s, vh, _ = res  # but we'll ignore bnd, the last output
-+
-+        # PROPACK order appears to be largest first. `svds` output order is not
-+        # guaranteed, according to documentation, but for ARPACK and LOBPCG
-+        # they actually are ordered smallest to largest, so reverse for
-+        # consistency.
-+        s = s[::-1]
-+        u = u[:, ::-1]
-+        vh = vh[::-1]
-+
-+        u = u if jobu else None
-+        vh = vh if jobv else None
-+
-+        if return_singular_vectors:
-+            return u, s, vh
-+        else:
-+            return s
-+
-+    elif solver == 'arpack' or solver is None:
-+        if v0 is None and not rs_was_None:
-+            v0 = random_state.uniform(size=(min(A.shape),))
-+        eigvals, eigvec = eigsh(XH_X, k=k, tol=tol ** 2, maxiter=maxiter,
-+                                ncv=ncv, which=which, v0=v0)
-+
-+    # Gramian matrices have real non-negative eigenvalues.
++    XH_X = LinearOperator(
++        matvec=matvec_XH_X, dtype=A.dtype, matmat=matmat_XH_X,
++        shape=(min(A.shape), min(A.shape)),
++    )
++    if v0 is None and (not rs_was_None):
++        v0 = random_state.uniform(size=(min(A.shape),))
++    eigvals, eigvec = eigsh(
++        XH_X, k=k, tol=tol ** 2, maxiter=maxiter, ncv=ncv, which=which, v0=v0,
++    )
++    # Recover singular vectors directly from Gramian eigenpairs, as in 1.8.1.
++    # Later SciPy releases add QR/SVD steps that change rounding.
 +    eigvals = np.maximum(eigvals.real, 0)
-+
-+    # Use the sophisticated detection of small eigenvalues from pinvh.
 +    t = eigvec.dtype.char.lower()
-+    factor = {'f': 1E3, 'd': 1E6}
++    factor = {'f': 1000.0, 'd': 1000000.0}
 +    cond = factor[t] * np.finfo(t).eps
 +    cutoff = cond * np.max(eigvals)
-+
-+    # Get a mask indicating which eigenpairs are not degenerately tiny,
-+    # and create the re-ordered array of thresholded singular values.
-+    above_cutoff = (eigvals > cutoff)
++    above_cutoff = eigvals > cutoff
 +    nlarge = above_cutoff.sum()
 +    nsmall = k - nlarge
 +    slarge = np.sqrt(eigvals[above_cutoff])
@@ -1272,7 +185,6 @@ Upstream source versions and licenses are recorded in the added modules.
 +    s[:nlarge] = slarge
 +    if not return_singular_vectors:
 +        return np.sort(s)
-+
 +    if n > m:
 +        vlarge = eigvec[:, above_cutoff]
 +        ularge = (X_matmat(vlarge) / slarge
@@ -1282,455 +194,24 @@ Upstream source versions and licenses are recorded in the added modules.
 +        ularge = eigvec[:, above_cutoff]
 +        vhlarge = (_herm(X_matmat(ularge) / slarge)
 +                   if return_singular_vectors != 'u' else None)
-+
 +    u = (_augmented_orthonormal_cols(ularge, nsmall, random_state)
 +         if ularge is not None else None)
 +    vh = (_augmented_orthonormal_rows(vhlarge, nsmall, random_state)
 +          if vhlarge is not None else None)
-+
 +    indexes_sorted = np.argsort(s)
 +    s = s[indexes_sorted]
 +    if u is not None:
 +        u = u[:, indexes_sorted]
 +    if vh is not None:
 +        vh = vh[indexes_sorted]
-+
-+    return u, s, vh
---- a/scanpy_scripts/lib/_legacy/_tsne.py
-+++ b/scanpy_scripts/lib/_legacy/_tsne.py
-@@ -0,0 +1,127 @@
-+# Derived from Scanpy 1.9.3 (BSD-3-Clause); remove obsolete sklearn argument.
-+# See LICENSE.scanpy, LICENSE.sklearn, LICENSE.scipy and LICENSE.scrublet.
-+from packaging import version
-+from typing import Optional, Union
-+import warnings
-+
-+from anndata import AnnData
-+
-+from scanpy._utils import AnyRandom
-+from ._representation import _choose_representation
-+from scanpy._settings import settings
-+from scanpy import logging as logg
-+
-+
-+def tsne(
-+    adata: AnnData,
-+    n_pcs: Optional[int] = None,
-+    use_rep: Optional[str] = None,
-+    perplexity: Union[float, int] = 30,
-+    early_exaggeration: Union[float, int] = 12,
-+    learning_rate: Union[float, int] = 1000,
-+    random_state: AnyRandom = 0,
-+    use_fast_tsne: bool = False,
-+    n_jobs: Optional[int] = None,
-+    copy: bool = False,
-+    *,
-+    metric: str = "euclidean",
-+) -> Optional[AnnData]:
-+    import sklearn
-+
-+    start = logg.info('computing tSNE')
-+    adata = adata.copy() if copy else adata
-+    X = _choose_representation(adata, use_rep=use_rep, n_pcs=n_pcs)
-+    # params for sklearn
-+    n_jobs = settings.n_jobs if n_jobs is None else n_jobs
-+    params_sklearn = dict(
-+        perplexity=perplexity,
-+        random_state=random_state,
-+        verbose=settings.verbosity > 3,
-+        early_exaggeration=early_exaggeration,
-+        learning_rate=learning_rate,
-+        n_jobs=n_jobs,
-+        metric=metric,
-+    )
-+    # square_distances will default to true in the future, we'll get ahead of the
-+    # warning for now
-+    if metric != "euclidean":
-+        sklearn_version = version.parse(sklearn.__version__)
-+        if sklearn_version >= version.parse("0.24.0"):
-+            params_sklearn["square_distances"] = True
-+        else:
-+            warnings.warn(
-+                "Results for non-euclidean metrics changed in sklearn 0.24.0, while "
-+                f"you are using {sklearn.__version__}.",
-+                UserWarning,
-+            )
-+
-+    # Backwards compat handling: Remove in scanpy 1.9.0
-+    if n_jobs != 1 and not use_fast_tsne:
-+        warnings.warn(
-+            UserWarning(
-+                "In previous versions of scanpy, calling tsne with n_jobs > 1 would use "
-+                "MulticoreTSNE. Now this uses the scikit-learn version of TSNE by default. "
-+                "If you'd like the old behaviour (which is deprecated), pass "
-+                "'use_fast_tsne=True'. Note, MulticoreTSNE is not actually faster anymore."
-+            )
-+        )
-+    if use_fast_tsne:
-+        warnings.warn(
-+            FutureWarning(
-+                "Argument `use_fast_tsne` is deprecated, and support for MulticoreTSNE "
-+                "will be dropped in a future version of scanpy."
-+            )
-+        )
-+
-+    # deal with different tSNE implementations
-+    if use_fast_tsne:
-+        try:
-+            from MulticoreTSNE import MulticoreTSNE as TSNE
-+
-+            tsne = TSNE(**params_sklearn)
-+            logg.info("    using the 'MulticoreTSNE' package by Ulyanov (2017)")
-+            # need to transform to float64 for MulticoreTSNE...
-+            X_tsne = tsne.fit_transform(X.astype('float64'))
-+        except ImportError:
-+            use_fast_tsne = False
-+            warnings.warn(
-+                UserWarning(
-+                    "Could not import 'MulticoreTSNE'. Falling back to scikit-learn."
-+                )
-+            )
-+    if use_fast_tsne is False:  # In case MultiCore failed to import
-+        from sklearn.manifold import TSNE
-+
-+        # Ignored by sklearn >=1.1; removed from its constructor in 1.3.
-+        params_sklearn.pop("square_distances", None)
-+
-+        # unfortunately, sklearn does not allow to set a minimum number
-+        # of iterations for barnes-hut tSNE
-+        tsne = TSNE(**params_sklearn)
-+        logg.info('    using sklearn.manifold.TSNE')
-+        X_tsne = tsne.fit_transform(X)
-+
-+    # update AnnData instance
-+    adata.obsm['X_tsne'] = X_tsne  # annotate samples with tSNE coordinates
-+    adata.uns["tsne"] = {
-+        "params": {
-+            k: v
-+            for k, v in {
-+                "perplexity": perplexity,
-+                "early_exaggeration": early_exaggeration,
-+                "learning_rate": learning_rate,
-+                "n_jobs": n_jobs,
-+                "metric": metric,
-+                "use_rep": use_rep,
-+            }.items()
-+            if v is not None
-+        }
-+    }
-+
-+    logg.info(
-+        '    finished',
-+        time=start,
-+        deep="added\n    'X_tsne', tSNE coordinates (adata.obsm)",
-+    )
-+
-+    return adata if copy else None
---- a/scanpy_scripts/lib/_legacy/_umap.py
-+++ b/scanpy_scripts/lib/_legacy/_umap.py
-@@ -0,0 +1,182 @@
-+# Derived from Scanpy 1.9.3 (BSD-3-Clause); temporary column-ordered UMAP graph.
-+# See LICENSE.scanpy, LICENSE.sklearn, LICENSE.scipy and LICENSE.scrublet.
-+from typing import Optional, Union
-+import warnings
-+
-+import numpy as np
-+from packaging import version
-+from anndata import AnnData
-+from sklearn.utils import check_random_state, check_array
-+
-+from scanpy.tools._utils import get_init_pos_from_paga
-+from ._representation import _choose_representation
-+from scanpy import logging as logg
-+from scanpy._settings import settings
-+from scanpy._compat import Literal
-+from scanpy._utils import AnyRandom, NeighborsView
-+
-+
-+_InitPos = Literal['paga', 'spectral', 'random']
-+
-+
-+def umap(
-+    adata: AnnData,
-+    min_dist: float = 0.5,
-+    spread: float = 1.0,
-+    n_components: int = 2,
-+    maxiter: Optional[int] = None,
-+    alpha: float = 1.0,
-+    gamma: float = 1.0,
-+    negative_sample_rate: int = 5,
-+    init_pos: Union[_InitPos, np.ndarray, None] = 'spectral',
-+    random_state: AnyRandom = 0,
-+    a: Optional[float] = None,
-+    b: Optional[float] = None,
-+    copy: bool = False,
-+    method: Literal['umap', 'rapids'] = 'umap',
-+    neighbors_key: Optional[str] = None,
-+) -> Optional[AnnData]:
-+    adata = adata.copy() if copy else adata
-+
-+    if neighbors_key is None:
-+        neighbors_key = 'neighbors'
-+
-+    if neighbors_key not in adata.uns:
-+        raise ValueError(
-+            f'Did not find .uns["{neighbors_key}"]. Run `sc.pp.neighbors` first.'
-+        )
-+    start = logg.info('computing UMAP')
-+
-+    neighbors = NeighborsView(adata, neighbors_key)
-+
-+    if 'params' not in neighbors or neighbors['params']['method'] != 'umap':
-+        logg.warning(
-+            f'.obsp["{neighbors["connectivities_key"]}"] have not been computed using umap'
-+        )
-+
-+    # Compat for umap 0.4 -> 0.5
-+    with warnings.catch_warnings():
-+        # umap 0.5.0
-+        warnings.filterwarnings("ignore", message=r"Tensorflow not installed")
-+        import umap
-+
-+    if version.parse(umap.__version__) >= version.parse("0.5.0"):
-+
-+        def simplicial_set_embedding(*args, **kwargs):
-+            from umap.umap_ import simplicial_set_embedding
-+
-+            X_umap, _ = simplicial_set_embedding(
-+                *args,
-+                densmap=False,
-+                densmap_kwds={},
-+                output_dens=False,
-+                **kwargs,
-+            )
-+            return X_umap
-+
-+    else:
-+        from umap.umap_ import simplicial_set_embedding
-+    from umap.umap_ import find_ab_params
-+
-+    if a is None or b is None:
-+        a, b = find_ab_params(spread, min_dist)
-+    else:
-+        a = a
-+        b = b
-+    adata.uns['umap'] = {'params': {'a': a, 'b': b}}
-+    if isinstance(init_pos, str) and init_pos in adata.obsm.keys():
-+        init_coords = adata.obsm[init_pos]
-+    elif isinstance(init_pos, str) and init_pos == 'paga':
-+        init_coords = get_init_pos_from_paga(
-+            adata, random_state=random_state, neighbors_key=neighbors_key
-+        )
-+    else:
-+        init_coords = init_pos  # Let umap handle it
-+    if hasattr(init_coords, "dtype"):
-+        init_coords = check_array(init_coords, dtype=np.float32, accept_sparse=False)
-+
-+    if random_state != 0:
-+        adata.uns['umap']['params']['random_state'] = random_state
-+    random_state = check_random_state(random_state)
-+
-+    neigh_params = neighbors['params']
-+    X = _choose_representation(
-+        adata,
-+        neigh_params.get('use_rep', None),
-+        neigh_params.get('n_pcs', None),
-+        silent=True,
-+    )
-+    if method == 'umap':
-+        # the data matrix X is really only used for determining the number of connected components
-+        # for the init condition in the UMAP embedding
-+        default_epochs = 500 if neighbors['connectivities'].shape[0] <= 10000 else 200
-+        n_epochs = default_epochs if maxiter is None else maxiter
-+        X_umap = simplicial_set_embedding(
-+            X,
-+            _ColumnOrderedCOO(neighbors['connectivities']),
-+            n_components,
-+            alpha,
-+            a,
-+            b,
-+            gamma,
-+            negative_sample_rate,
-+            n_epochs,
-+            init_coords,
-+            random_state,
-+            neigh_params.get('metric', 'euclidean'),
-+            neigh_params.get('metric_kwds', {}),
-+            verbose=settings.verbosity > 3,
-+        )
-+    elif method == 'rapids':
-+        metric = neigh_params.get('metric', 'euclidean')
-+        if metric != 'euclidean':
-+            raise ValueError(
-+                f'`sc.pp.neighbors` was called with `metric` {metric!r}, '
-+                "but umap `method` 'rapids' only supports the 'euclidean' metric."
-+            )
-+        from cuml import UMAP
-+
-+        n_neighbors = neighbors['params']['n_neighbors']
-+        n_epochs = (
-+            500 if maxiter is None else maxiter
-+        )  # 0 is not a valid value for rapids, unlike original umap
-+        X_contiguous = np.ascontiguousarray(X, dtype=np.float32)
-+        umap = UMAP(
-+            n_neighbors=n_neighbors,
-+            n_components=n_components,
-+            n_epochs=n_epochs,
-+            learning_rate=alpha,
-+            init=init_pos,
-+            min_dist=min_dist,
-+            spread=spread,
-+            negative_sample_rate=negative_sample_rate,
-+            a=a,
-+            b=b,
-+            verbose=settings.verbosity > 3,
-+            random_state=random_state,
-+        )
-+        X_umap = umap.fit_transform(X_contiguous)
-+    adata.obsm['X_umap'] = X_umap  # annotate samples with UMAP coordinates
-+    logg.info(
-+        '    finished',
-+        time=start,
-+        deep=('added\n' "    'X_umap', UMAP coordinates (adata.obsm)"),
-+    )
-+    return adata if copy else None
-+
-+
-+from scipy.sparse import coo_matrix
-+
-+
-+class _ColumnOrderedCOO(coo_matrix):
-+    """Keep the edge traversal order used by SciPy <=1.10 inside UMAP only."""
-+
-+    def sum_duplicates(self):
-+        super().sum_duplicates()
-+        order = np.lexsort((self.row, self.col))
-+        self.row = self.row[order]
-+        self.col = self.col[order]
-+        self.data = self.data[order]
-+        # Historical COO canonical format was column-major. This private
-+        # temporary graph is consumed by UMAP and never stored in AnnData.
-+        self.has_canonical_format = True
---- a/scanpy_scripts/lib/_neighbors.py
-+++ b/scanpy_scripts/lib/_neighbors.py
-@@ -3,6 +3,7 @@
- """
--
-+
- import scanpy as sc
-+from ._legacy._representation import _choose_representation
- from ..obj_utils import (
-     _backup_default_key,
-     _delete_backup_key,
-@@ -15,6 +16,11 @@
-     Wrapper function for sc.pp.neighbors(), for supporting multiple n_neighbors
-     """
-     if not isinstance(n_neighbors, (list, tuple)):
-+        # Match Scanpy's automatic PCA fallback using the local legacy solver.
-+        if (not kwargs.get("copy", False) and kwargs.get("use_rep") is None
-+                and kwargs.get("n_pcs") != 0
-+                and adata.n_vars > sc.settings.N_PCS and "X_pca" not in adata.obsm):
-+            _choose_representation(adata, n_pcs=kwargs.get("n_pcs"))
-         sc.pp.neighbors(adata, n_neighbors=n_neighbors, key_added=key_added, **kwargs)
-     else:
-         for i, n_nb in enumerate(n_neighbors):
---- a/scanpy_scripts/lib/_pca.py
-+++ b/scanpy_scripts/lib/_pca.py
-@@ -5,3 +5,4 @@
- import logging
- import scanpy as sc
-+from ._legacy._pca import pca as legacy_pca
- from ..obj_utils import write_embedding
-@@ -19,7 +20,7 @@
-     if key_added:
-         if "X_pca" in adata.obsm.keys():
-             adata.obsm["X_pca_bkup"] = adata.obsm["X_pca"]
--        sc.pp.pca(adata, **kwargs)
-+        legacy_pca(adata, **kwargs)
-         pca_key = f"X_pca_{key_added}"
-         adata.obsm[pca_key] = adata.obsm["X_pca"]
-         del adata.obsm["X_pca"]
-@@ -27,7 +28,7 @@
-             adata.obsm["X_pca"] = adata.obsm["X_pca_bkup"]
-             del adata.obsm["X_pca_bkup"]
-     else:
--        sc.pp.pca(adata, **kwargs)
-+        legacy_pca(adata, **kwargs)
-         pca_key = "X_pca"
--
-+
-     if export_embedding is not None:
---- a/scanpy_scripts/lib/_scrublet.py
-+++ b/scanpy_scripts/lib/_scrublet.py
-@@ -6,6 +6,7 @@
- import numpy as np
- import pandas as pd
- import scanpy as sc
-+from ._legacy._scrublet import scrublet as legacy_scrublet
- import scanpy.external as sce
--
-+
- from ..obj_utils import write_obs
-@@ -16,6 +17,6 @@
- def scrublet(adata, adata_sim=None, filter=False, export_table=None, **kwargs):
-     """
--    Wrapper function for sce.pp.scrublet(), to allow filtering of resulting object
-+    Wrapper function for legacy_scrublet(), to allow filtering of resulting object
-     """
--
-+
-     # Do we need to read an object with the doublet simulations?
-@@ -23,6 +24,6 @@
-     if adata_sim:
-         adata_sim = sc.read_h5ad(adata_sim)
--
-+
--    sce.pp.scrublet(adata, adata_sim=adata_sim, **kwargs)
-+    legacy_scrublet(adata, adata_sim=adata_sim, **kwargs)
--
-+
-     # Do any export before optional filtering
---- a/scanpy_scripts/lib/_tsne.py
-+++ b/scanpy_scripts/lib/_tsne.py
-@@ -3,6 +3,7 @@
- """
--
-+
- import scanpy as sc
-+from ._legacy._tsne import tsne as legacy_tsne
- from ..obj_utils import (
-     _backup_obsm_key,
-     _rename_obsm_key,
-@@ -24,7 +25,7 @@
-     if not isinstance(random_state, (list, tuple)):
-         _backup_obsm_key(adata, "X_tsne")
--
-+
--        sc.tl.tsne(adata, random_state=random_state, **kwargs)
-+        legacy_tsne(adata, random_state=random_state, **kwargs)
--
-+
-         tsne_key = "X_tsne"
-         if key_added:
---- a/scanpy_scripts/lib/_umap.py
-+++ b/scanpy_scripts/lib/_umap.py
-@@ -3,6 +3,7 @@
- """
--
-+
- import scanpy as sc
-+from ._legacy._umap import umap as legacy_umap
- from ..obj_utils import (
-     _set_default_key,
-     _restore_default_key,
-@@ -26,7 +27,7 @@
-     if not isinstance(random_state, (list, tuple)):
-         _backup_obsm_key(adata, "X_umap")
--
-+
--        sc.tl.umap(adata, random_state=random_state, **kwargs)
-+        legacy_umap(adata, random_state=random_state, **kwargs)
--
-+
-         umap_key = "X_umap"
-         if key_added:
++    return (u, s, vh)
+--- a/scanpy_scripts/cmd_utils.py
++++ b/scanpy_scripts/cmd_utils.py
+@@ -10,2 +10,3 @@
+ from .cmd_options import CMD_OPTIONS
++from ._legacy_numerics import legacy_numerics
+ from .lib._paga import plot_paga
+@@ -33,2 +34,3 @@
+     @add_docstring(cmd_desc, arg_desc)
++    @legacy_numerics()
+     def cmd(
