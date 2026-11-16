@@ -11,13 +11,10 @@
      cmd_desc="Use harmonypy [Korunsky19] to integrate different experiments.",
 --- /dev/null
 +++ b/scanpy_scripts/lib/_harmony.py
-@@ -0,0 +1,65 @@
-+"""Preserve scikit-learn 1.2.2 KMeans seeding for harmonypy 0.0.10.
+@@ -0,0 +1,62 @@
++"""Preserve scikit-learn 1.2.2's dense KMeans seeding for Harmony.
 +
-+The initializer is adapted from scikit-learn 1.2.2's _kmeans_plusplus,
-+Copyright (c) 2007-2023 The scikit-learn developers, BSD-3-Clause.
-+See LICENSE.sklearn in the distribution license files for the license.
-+Only dense input is needed for Harmony's PCA coordinates.
++Adapted from _kmeans_plusplus; see LICENSE.sklearn for copyright and license.
 +"""
 +from functools import partial
 +
