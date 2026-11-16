@@ -1,55 +1,21 @@
-Preserve legacy CLI numerics with small, command-scoped function overrides.
+Keep small UMAP ordering and t-SNE API adapters around their wrappers.
 
-Use the installed Scanpy, sklearn and Scrublet routines. Retain only the old
-ARPACK reconstruction, column-major COO traversal and obsolete TSNE argument
-handling. Restore dependency bindings after each CLI command, even on errors.
-Non-ARPACK solvers use installed SciPy. Keep the SciPy copyright/license notice.
+Use installed SciPy for PCA/SVD; no numerical algorithm is copied or replaced.
+Restore temporary bindings after UMAP/t-SNE returns or raises, including nested
+calls. Other commands retain standard dependency behavior. This limits output
+drift but does not promise identical PCA values or embedding layouts.
 
---- a/LICENSE.scipy
-+++ b/LICENSE.scipy
-@@ -0,0 +1,30 @@
-+Copyright (c) 2001-2002 Enthought, Inc.  2003-2019, SciPy Developers.
-+All rights reserved.
-+
-+Redistribution and use in source and binary forms, with or without
-+modification, are permitted provided that the following conditions
-+are met:
-+
-+1. Redistributions of source code must retain the above copyright
-+   notice, this list of conditions and the following disclaimer.
-+
-+2. Redistributions in binary form must reproduce the above
-+   copyright notice, this list of conditions and the following
-+   disclaimer in the documentation and/or other materials provided
-+   with the distribution.
-+
-+3. Neither the name of the copyright holder nor the names of its
-+   contributors may be used to endorse or promote products derived
-+   from this software without specific prior written permission.
-+
-+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 --- a/scanpy_scripts/_legacy_numerics.py
 +++ b/scanpy_scripts/_legacy_numerics.py
-@@ -0,0 +1,50 @@
-+"""Legacy numerical behavior during scanpy-scripts CLI commands only.
+@@ -0,0 +1,36 @@
++"""Small compatibility adapters for UMAP and t-SNE wrappers.
 +
-+Bindings are restored on return or exception. Importing the library does not
-+activate these hooks. They temporarily affect dependency modules in this
-+process, so CLI callbacks should not run concurrently with unrelated analysis.
-+SciPy and sklearn versions are constrained by the Conda recipe.
++Preserve historical UMAP edge order and omit Scanpy's obsolete sklearn keyword.
++PCA/SVD always use installed SciPy. Imports do not replace any bindings; the
++wrappers restore them on return or exception. The temporary replacements affect
++this process, so avoid concurrent unrelated analysis during these operations.
 +"""
 +from contextlib import ExitStack, contextmanager
-+from importlib import import_module
 +from unittest.mock import patch
 +
 +
@@ -57,13 +23,8 @@ Non-ARPACK solvers use installed SciPy. Keep the SciPy copyright/license notice.
 +def legacy_numerics():
 +    import numpy as np
 +    from scipy.sparse import coo_matrix
-+    import scipy.sparse.linalg as sla
 +    import sklearn.manifold as manifold
-+    from ._legacy_svds import svds
 +
-+    scanpy_pca = import_module('scanpy.preprocessing._pca')
-+    sklearn_pca = import_module('sklearn.decomposition._pca')
-+    sklearn_svd = import_module('sklearn.decomposition._truncated_svd')
 +    original_sum = coo_matrix.sum_duplicates
 +    original_tsne = manifold.TSNE
 +
@@ -79,139 +40,29 @@ Non-ARPACK solvers use installed SciPy. Keep the SciPy copyright/license notice.
 +        kwargs.pop('square_distances', None)
 +        return original_tsne(*args, **kwargs)
 +
-+    replacements = (
-+        (sla, 'svds', svds),
-+        (scanpy_pca, 'svds', svds),
-+        (sklearn_pca, 'svds', svds),
-+        (sklearn_svd, 'svds', svds),
-+        (coo_matrix, 'sum_duplicates', column_ordered_sum),
-+        (manifold, 'TSNE', compatible_tsne),
-+    )
 +    with ExitStack() as stack:
-+        for obj, name, replacement in replacements:
-+            stack.enter_context(patch.object(obj, name, replacement))
++        stack.enter_context(patch.object(coo_matrix, 'sum_duplicates', column_ordered_sum))
++        stack.enter_context(patch.object(manifold, 'TSNE', compatible_tsne))
 +        yield
---- a/scanpy_scripts/_legacy_svds.py
-+++ b/scanpy_scripts/_legacy_svds.py
-@@ -0,0 +1,111 @@
-+"""SciPy 1.8.1 ARPACK reconstruction using the installed eigensolver.
+--- a/scanpy_scripts/lib/_tsne.py
++++ b/scanpy_scripts/lib/_tsne.py
+@@ -5,2 +5,3 @@
+ import scanpy as sc
++from .._legacy_numerics import legacy_numerics
+ from ..obj_utils import (
+@@ -13,2 +14,3 @@
+-
 +
-+Derived from SciPy 1.8.1, Copyright (c) 2001-2002 Enthought, Inc.,
-+2003-2019 SciPy Developers. BSD-3-Clause; see LICENSE.scipy.
-+The recipe bounds SciPy's private input validator to >=1.9.3,<1.14.
-+Non-ARPACK solvers delegate to the installed SciPy implementation.
-+"""
-+import numpy as np
-+from scipy.sparse.linalg import LinearOperator, eigsh, svds as modern_svds
-+from scipy.sparse.linalg._eigen._svds import _iv
++@legacy_numerics()
+ def tsne(
+--- a/scanpy_scripts/lib/_umap.py
++++ b/scanpy_scripts/lib/_umap.py
+@@ -5,2 +5,3 @@
+ import scanpy as sc
++from .._legacy_numerics import legacy_numerics
+ from ..obj_utils import (
+@@ -15,2 +16,3 @@
+-
 +
-+
-+def _augmented_orthonormal_cols(x, k, random_state):
-+    n, m = x.shape
-+    y = np.empty((n, m + k), dtype=x.dtype)
-+    y[:, :m] = x
-+    for i in range(k):
-+        v = random_state.standard_normal(size=n)
-+        if np.iscomplexobj(x):
-+            v = v + 1j * random_state.standard_normal(size=n)
-+        for j in range(m + i):
-+            u = y[:, j]
-+            v -= np.dot(v, u.conj()) / np.dot(u, u.conj()) * u
-+        v /= np.sqrt(np.dot(v, v.conj()))
-+        y[:, m + i] = v
-+    return y
-+
-+
-+def _augmented_orthonormal_rows(x, k, random_state):
-+    return _augmented_orthonormal_cols(x.T, k, random_state).T
-+
-+
-+def _herm(x):
-+    return x.T.conj()
-+
-+
-+def svds(A, k=6, ncv=None, tol=0, which='LM', v0=None, maxiter=None,
-+         return_singular_vectors=True, solver='arpack', random_state=None,
-+         options=None):
-+    if str(solver).lower() != 'arpack':
-+        return modern_svds(
-+            A, k=k, ncv=ncv, tol=tol, which=which, v0=v0, maxiter=maxiter,
-+            return_singular_vectors=return_singular_vectors, solver=solver,
-+            random_state=random_state, options=options,
-+        )
-+    rs_was_None = random_state is None
-+    args = _iv(A, k, ncv, tol, which, v0, maxiter,
-+               return_singular_vectors, solver, random_state)
-+    (A, k, ncv, tol, which, v0, maxiter,
-+     return_singular_vectors, solver, random_state) = args
-+    n, m = A.shape
-+    if n > m:
-+        X_dot = A.matvec
-+        X_matmat = A.matmat
-+        XH_dot = A.rmatvec
-+        XH_mat = A.rmatmat
-+    else:
-+        X_dot = A.rmatvec
-+        X_matmat = A.rmatmat
-+        XH_dot = A.matvec
-+        XH_mat = A.matmat
-+
-+    def matvec_XH_X(x):
-+        return XH_dot(X_dot(x))
-+
-+    def matmat_XH_X(x):
-+        return XH_mat(X_matmat(x))
-+    XH_X = LinearOperator(
-+        matvec=matvec_XH_X, dtype=A.dtype, matmat=matmat_XH_X,
-+        shape=(min(A.shape), min(A.shape)),
-+    )
-+    if v0 is None and (not rs_was_None):
-+        v0 = random_state.uniform(size=(min(A.shape),))
-+    eigvals, eigvec = eigsh(
-+        XH_X, k=k, tol=tol ** 2, maxiter=maxiter, ncv=ncv, which=which, v0=v0,
-+    )
-+    # Recover singular vectors directly from Gramian eigenpairs, as in 1.8.1.
-+    # Later SciPy releases add QR/SVD steps that change rounding.
-+    eigvals = np.maximum(eigvals.real, 0)
-+    t = eigvec.dtype.char.lower()
-+    factor = {'f': 1000.0, 'd': 1000000.0}
-+    cond = factor[t] * np.finfo(t).eps
-+    cutoff = cond * np.max(eigvals)
-+    above_cutoff = eigvals > cutoff
-+    nlarge = above_cutoff.sum()
-+    nsmall = k - nlarge
-+    slarge = np.sqrt(eigvals[above_cutoff])
-+    s = np.zeros_like(eigvals)
-+    s[:nlarge] = slarge
-+    if not return_singular_vectors:
-+        return np.sort(s)
-+    if n > m:
-+        vlarge = eigvec[:, above_cutoff]
-+        ularge = (X_matmat(vlarge) / slarge
-+                  if return_singular_vectors != 'vh' else None)
-+        vhlarge = _herm(vlarge)
-+    else:
-+        ularge = eigvec[:, above_cutoff]
-+        vhlarge = (_herm(X_matmat(ularge) / slarge)
-+                   if return_singular_vectors != 'u' else None)
-+    u = (_augmented_orthonormal_cols(ularge, nsmall, random_state)
-+         if ularge is not None else None)
-+    vh = (_augmented_orthonormal_rows(vhlarge, nsmall, random_state)
-+          if vhlarge is not None else None)
-+    indexes_sorted = np.argsort(s)
-+    s = s[indexes_sorted]
-+    if u is not None:
-+        u = u[:, indexes_sorted]
-+    if vh is not None:
-+        vh = vh[indexes_sorted]
-+    return (u, s, vh)
---- a/scanpy_scripts/cmd_utils.py
-+++ b/scanpy_scripts/cmd_utils.py
-@@ -10,2 +10,3 @@
- from .cmd_options import CMD_OPTIONS
-+from ._legacy_numerics import legacy_numerics
- from .lib._paga import plot_paga
-@@ -33,2 +34,3 @@
-     @add_docstring(cmd_desc, arg_desc)
-+    @legacy_numerics()
-     def cmd(
++@legacy_numerics()
+ def umap(

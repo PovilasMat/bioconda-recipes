@@ -51,12 +51,12 @@ requirements:
     # Scanpy 1.9.3 uses anndata.read and np.float_.
     - anndata >=0.9.2,<0.12
     - numpy >=1.23.5,<2
-    # Match the original environment's BLAS/LAPACK numerical behavior.
+    # Keep the baseline backend to limit embedding changes.
     - libopenblas =0.3.25
     - libblas * *openblas
     - libcblas * *openblas
     - liblapack * *openblas
-    # Newer Numba/LLVM changes UMAP's compiled smoothing kernel results.
+    # Newer Numba/LLVM produced non-finite UMAP smoothing widths in tests.
     - numba =0.60.0
     - pandas <3
     # Louvain still imports pkg_resources, removed in setuptools 82.
@@ -91,13 +91,12 @@ test:
     - scanpy_scripts
     - scanpy_scripts.lib
     - scanpy_scripts._legacy_numerics
-    - scanpy_scripts._legacy_svds
     - louvain
   commands:
     - >-
       python -c "import numpy as np; from scipy.sparse import coo_matrix; from scanpy_scripts._legacy_numerics import legacy_numerics; original = coo_matrix.sum_duplicates; context = legacy_numerics(); context.__enter__(); graph = coo_matrix(([1., 2., 3.], ([0, 1, 0], [1, 0, 1])), shape=(2, 2)); graph.sum_duplicates(); assert np.array_equal(graph.row, [1, 0]) and np.array_equal(graph.col, [0, 1]) and np.array_equal(graph.data, [2., 4.]); context.__exit__(None, None, None); assert coo_matrix.sum_duplicates is original"
     - >-
-      python -c "import numpy as np; from scanpy_scripts._legacy_svds import svds; x = np.arange(24, dtype=float).reshape(6, 4); u, s, vt = svds(x, k=2, random_state=0); np.testing.assert_allclose((u * s) @ vt, x, atol=1e-12)"
+      python -c "import scipy.sparse.linalg as sla; import sklearn.manifold as manifold; from scanpy_scripts._legacy_numerics import legacy_numerics; original_svd, original_tsne = sla.svds, manifold.TSNE; context = legacy_numerics(); context.__enter__(); assert sla.svds is original_svd; model = manifold.TSNE(square_distances=True); assert isinstance(model, original_tsne); context.__exit__(None, None, None); assert manifold.TSNE is original_tsne and sla.svds is original_svd"
     - >-
       python -c "import numpy as np; from umap.umap_ import smooth_knn_dist; widths, _ = smooth_knn_dist(np.arange(10, dtype=np.float32).reshape(1, -1), 10.0); assert np.isfinite(widths).all(), 'UMAP returned non-finite smoothing widths'"
     - scanpy-cli --help
@@ -124,7 +123,6 @@ about:
   license_file:
     - scanpy-scripts/LICENSE
     - scanpy-scripts/LICENSE.sklearn
-    - scanpy-scripts/LICENSE.scipy
   summary: Scripts for using scanpy from the command line
 
 extra:
