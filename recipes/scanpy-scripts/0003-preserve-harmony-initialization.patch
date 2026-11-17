@@ -1,0 +1,108 @@
+--- a/scanpy_scripts/cmds.py
++++ b/scanpy_scripts/cmds.py
+@@ -30,2 +30,3 @@
+ from .lib._bbknn import bbknn
++from .lib._harmony import harmony_integrate
+ from .lib._mnn import mnn_correct
+@@ -230,3 +231,3 @@
+     "harmony",
+-    sce.pp.harmony_integrate,
++    harmony_integrate,
+     cmd_desc="Use harmonypy [Korunsky19] to integrate different experiments.",
+--- /dev/null
++++ b/scanpy_scripts/lib/_harmony.py
+@@ -0,0 +1,62 @@
++"""Preserve scikit-learn 1.2.2's dense KMeans seeding for Harmony.
++
++Adapted from _kmeans_plusplus; see LICENSE.sklearn for copyright and license.
++"""
++from functools import partial
++
++import numpy as np
++from sklearn.cluster import KMeans
++from sklearn.metrics.pairwise import euclidean_distances
++from sklearn.utils import check_random_state
++from sklearn.utils.extmath import row_norms, stable_cumsum
++
++
++def legacy_kmeans_plusplus(data, n_clusters, random_state):
++    """Generate the same unweighted k-means++ seeds as scikit-learn 1.2.2."""
++    random_state = check_random_state(random_state)
++    n_samples, n_features = data.shape
++    squared_norms = row_norms(data, squared=True)
++    centers = np.empty((n_clusters, n_features), dtype=data.dtype)
++    n_local_trials = 2 + int(np.log(n_clusters))
++    first = random_state.randint(n_samples)
++    centers[0] = data[first]
++    closest = euclidean_distances(
++        centers[0, np.newaxis], data, Y_norm_squared=squared_norms, squared=True
++    )
++    potential = closest.sum()
++    for index in range(1, n_clusters):
++        draws = random_state.uniform(size=n_local_trials) * potential
++        candidates = np.searchsorted(stable_cumsum(closest), draws)
++        np.clip(candidates, None, closest.size - 1, out=candidates)
++        distances = euclidean_distances(
++            data[candidates], data, Y_norm_squared=squared_norms, squared=True
++        )
++        np.minimum(closest, distances, out=distances)
++        potentials = distances.sum(axis=1)
++        best = np.argmin(potentials)
++        potential = potentials[best]
++        closest = distances[best]
++        centers[index] = data[candidates[best]]
++    return centers
++
++
++def legacy_cluster_kmeans(data, n_clusters, random_state=0):
++    """Keep the old initializer while using the installed KMeans optimizer."""
++    model = KMeans(
++        n_clusters=n_clusters,
++        init=legacy_kmeans_plusplus,
++        n_init=10,
++        max_iter=25,
++        random_state=random_state,
++    )
++    return model.fit(data).cluster_centers_
++
++
++def harmony_integrate(adata, key, basis='X_pca', adjusted_basis='X_pca_harmony', **kwargs):
++    """A scanpy-scripts adapter using harmonypy's existing cluster_fn hook."""
++    from scanpy.external.pp import harmony_integrate as original
++    if kwargs.get('cluster_fn', 'kmeans') == 'kmeans':
++        kwargs['cluster_fn'] = partial(
++            legacy_cluster_kmeans, random_state=kwargs.get('random_state', 0)
++        )
++    return original(adata, key, basis=basis, adjusted_basis=adjusted_basis, **kwargs)
+--- /dev/null
++++ b/LICENSE.sklearn
+@@ -0,0 +1,29 @@
++BSD 3-Clause License
++
++Copyright (c) 2007-2023 The scikit-learn developers.
++All rights reserved.
++
++Redistribution and use in source and binary forms, with or without
++modification, are permitted provided that the following conditions are met:
++
++* Redistributions of source code must retain the above copyright notice, this
++  list of conditions and the following disclaimer.
++
++* Redistributions in binary form must reproduce the above copyright notice,
++  this list of conditions and the following disclaimer in the documentation
++  and/or other materials provided with the distribution.
++
++* Neither the name of the copyright holder nor the names of its
++  contributors may be used to endorse or promote products derived from
++  this software without specific prior written permission.
++
++THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
++AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
++DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
++FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
++SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
++CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
++OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.

@@ -1,0 +1,14 @@
+--- a/scanpy_scripts/lib/_bbknn.py
++++ b/scanpy_scripts/lib/_bbknn.py
+@@ -19,5 +19,10 @@
+     """
+-
++
++    # BBKNN 1.5.1 interpreted None as all available dimensions.
++    if kwargs.get("n_pcs") is None:
++        use_rep = kwargs.get("use_rep", "X_pca")
++        kwargs["n_pcs"] = adata.obsm[use_rep].shape[1]
++
+     _backup_default_key(adata.uns, "neighbors")
+     _backup_default_key(adata.obsp, "distances")
+     _backup_default_key(adata.obsp, "connectivities")

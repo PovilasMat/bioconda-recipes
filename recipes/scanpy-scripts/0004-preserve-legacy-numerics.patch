@@ -1,0 +1,59 @@
+Preserve UMAP edge order and adapt Scanpy's t-SNE call to newer sklearn.
+
+--- a/scanpy_scripts/_legacy_numerics.py
++++ b/scanpy_scripts/_legacy_numerics.py
+@@ -0,0 +1,32 @@
++"""Temporary dependency overrides, restored on return or exception.
++
++These are process-wide; avoid unrelated concurrent analysis.
++"""
++from contextlib import contextmanager
++from unittest.mock import patch
++
++
++@contextmanager
++def legacy_numerics():
++    import numpy as np
++    from scipy.sparse import coo_matrix
++    import sklearn.manifold as manifold
++
++    original_sum = coo_matrix.sum_duplicates
++    original_tsne = manifold.TSNE
++
++    def column_ordered_sum(self):
++        original_sum(self)
++        order = np.lexsort((self.row, self.col))
++        self.row, self.col = self.row[order], self.col[order]
++        self.data = self.data[order]
++        self.has_canonical_format = True  # SciPy <=1.10 convention
++
++    def compatible_tsne(*args, **kwargs):
++        # Ignored since sklearn 1.1; removed from its constructor in 1.3.
++        kwargs.pop('square_distances', None)
++        return original_tsne(*args, **kwargs)
++
++    with patch.object(coo_matrix, 'sum_duplicates', column_ordered_sum):
++        with patch.object(manifold, 'TSNE', compatible_tsne):
++            yield
+--- a/scanpy_scripts/lib/_tsne.py
++++ b/scanpy_scripts/lib/_tsne.py
+@@ -5,2 +5,3 @@
+ import scanpy as sc
++from .._legacy_numerics import legacy_numerics
+ from ..obj_utils import (
+@@ -13,2 +14,3 @@
+-
++
++@legacy_numerics()
+ def tsne(
+--- a/scanpy_scripts/lib/_umap.py
++++ b/scanpy_scripts/lib/_umap.py
+@@ -5,2 +5,3 @@
+ import scanpy as sc
++from .._legacy_numerics import legacy_numerics
+ from ..obj_utils import (
+@@ -15,2 +16,3 @@
+-
++
++@legacy_numerics()
+ def umap(
