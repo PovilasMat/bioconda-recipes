@@ -2,12 +2,12 @@ Preserve UMAP edge order and adapt Scanpy's t-SNE call to newer sklearn.
 
 --- a/scanpy_scripts/_legacy_numerics.py
 +++ b/scanpy_scripts/_legacy_numerics.py
-@@ -0,0 +1,33 @@
+@@ -0,0 +1,32 @@
 +"""Temporary dependency overrides, restored on return or exception.
 +
 +These are process-wide; avoid unrelated concurrent analysis.
 +"""
-+from contextlib import ExitStack, contextmanager
++from contextlib import contextmanager
 +from unittest.mock import patch
 +
 +
@@ -32,10 +32,9 @@ Preserve UMAP edge order and adapt Scanpy's t-SNE call to newer sklearn.
 +        kwargs.pop('square_distances', None)
 +        return original_tsne(*args, **kwargs)
 +
-+    with ExitStack() as stack:
-+        stack.enter_context(patch.object(coo_matrix, 'sum_duplicates', column_ordered_sum))
-+        stack.enter_context(patch.object(manifold, 'TSNE', compatible_tsne))
-+        yield
++    with patch.object(coo_matrix, 'sum_duplicates', column_ordered_sum):
++        with patch.object(manifold, 'TSNE', compatible_tsne):
++            yield
 --- a/scanpy_scripts/lib/_tsne.py
 +++ b/scanpy_scripts/lib/_tsne.py
 @@ -5,2 +5,3 @@

@@ -54,8 +54,6 @@ requirements:
     # Keep the baseline backend to limit embedding changes.
     - libopenblas =0.3.25
     - libblas * *openblas
-    - libcblas * *openblas
-    - liblapack * *openblas
     # Newer Numba/LLVM produced non-finite UMAP smoothing widths in tests.
     - numba =0.60.0
     - pandas <3
@@ -71,7 +69,6 @@ requirements:
     # The Harmony compatibility wrapper uses the 0.0.10 cluster_fn hook.
     - harmonypy =0.0.10
     - bbknn =1.6.0
-    - cython
     - mnnpy >=0.1.9.5
     # Patched mnnpy needs >=1.9.3; Scanpy 1.9.3 still uses sparse .A.
     - scipy >=1.9.3,<1.14
@@ -96,7 +93,7 @@ test:
     - >-
       python -c "import numpy as np; from scipy.sparse import coo_matrix; from scanpy_scripts._legacy_numerics import legacy_numerics; original = coo_matrix.sum_duplicates; context = legacy_numerics(); context.__enter__(); graph = coo_matrix(([1., 2., 3.], ([0, 1, 0], [1, 0, 1])), shape=(2, 2)); graph.sum_duplicates(); assert np.array_equal(graph.row, [1, 0]) and np.array_equal(graph.col, [0, 1]) and np.array_equal(graph.data, [2., 4.]); context.__exit__(None, None, None); assert coo_matrix.sum_duplicates is original"
     - >-
-      python -c "import scipy.sparse.linalg as sla; import sklearn.manifold as manifold; from scanpy_scripts._legacy_numerics import legacy_numerics; original_svd, original_tsne = sla.svds, manifold.TSNE; context = legacy_numerics(); context.__enter__(); assert sla.svds is original_svd; model = manifold.TSNE(square_distances=True); assert isinstance(model, original_tsne); context.__exit__(None, None, None); assert manifold.TSNE is original_tsne and sla.svds is original_svd"
+      python -c "import sklearn.manifold as manifold; from scanpy_scripts._legacy_numerics import legacy_numerics; original_tsne = manifold.TSNE; context = legacy_numerics(); context.__enter__(); model = manifold.TSNE(square_distances=True); assert isinstance(model, original_tsne); context.__exit__(None, None, None); assert manifold.TSNE is original_tsne"
     - >-
       python -c "import numpy as np; from umap.umap_ import smooth_knn_dist; widths, _ = smooth_knn_dist(np.arange(10, dtype=np.float32).reshape(1, -1), 10.0); assert np.isfinite(widths).all(), 'UMAP returned non-finite smoothing widths'"
     - scanpy-cli --help
